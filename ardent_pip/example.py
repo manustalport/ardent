@@ -36,7 +36,7 @@ if False:
 
     import ardent as ard
     
-    star = 'HD3651'
+    star = 'HD48948'
     ins = 'HARPN'
     root = '/Users/cretignier/Documents/Yarara/'+star+'/data/s1d/'+ins
     output_directory = root+'/DETECTION_LIMIT/'

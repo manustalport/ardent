@@ -9,6 +9,8 @@ import reboundx
 from PyAstronomy.pyTiming import pyPeriod
 from reboundx import constants
 from scipy.interpolate import griddata
+from scipy.optimize import curve_fit
+from scipy.special import erf
 from tqdm import tqdm
 
 # ---------- Define constants
@@ -20,6 +22,13 @@ Mass_sun = 1.988475e30
 Mass_earth = Mass_sun*mE_S
 Mass_jupiter = Mass_sun*mJ_S
 
+def erf_function(x, b, c):
+    return 0.5 * erf(b * (x - c)) + 0.5
+
+def fit_erf(x, y):
+    initial_guess = [1, np.mean(x)]
+    popt, pcov = curve_fit(erf_function, x, y, p0=initial_guess)
+    return popt
 
 def ang_rad(angle):
     angle = angle * np.pi / 180.
@@ -40,8 +49,6 @@ def AmpStar(ms, periode, amplitude, i=90, e=0, code='Sun-Earth'):
 
     semi_axis = periode**(2./3.) * ((ms+coeff/Mass_sun)/(Mass_sun+Mass_earth))**(1./3.)
     return mp, semi_axis
-
-
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 1: data-driven detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
@@ -120,33 +127,22 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, Nsamples=int(2000), Nphas
 def Stat_DataDL(output_file, percentage=95, nbins=20, axis_y_var='M'):
 
     output = pd.read_pickle(output_file)
-    P = output['P']
-    M = output[axis_y_var]
-    detect_rate = output['detect_rate']
-    Nphases = output['Nphases']
+    P = np.array(output['P'])
+    M =np.array(output[axis_y_var])
+    detect_rate = np.array(output['detect_rate'])
     Pmin = np.min(P) ; Pmax = np.max(P)
     Mmin = np.min(M) ; Mmax = np.max(M)
 
-    pi = np.linspace(np.log10(Pmin), np.log10(Pmax), 100)
-    mi = np.linspace(Mmin, Mmax, 100)
-    pi, mi = np.meshgrid(pi, mi)
-    di = griddata((np.log10(P), M), detect_rate, (pi, mi), method='cubic')
-
-    bins = np.linspace(np.log10(Pmin), np.log10(Pmax), nbins+1)
-
-    sub_P = []
-    sub_M = []
-    for i in range(len(P)):
-        if detect_rate[i] < 0.9999:
-            sub_P = np.append(sub_P, P[i])
-            sub_M = np.append(sub_M, M[i])
-
-    digitized = np.digitize(np.log10(sub_P), bins)
-    subP_means = [sub_P[digitized == i].mean() for i in range(1, len(bins))]
-
-    M_bins = [sub_M[digitized == i] for i in range(1, len(bins))]
-    q = percentage / 100.
-    M95 = [np.quantile(M_bins[i],q) for i in range(nbins)] # The x% mass limit of data-driven detection for each period bin
+    bins = 10**np.linspace(np.log10(Pmin), np.log10(Pmax), nbins+1)
+    subP_means = []
+    M95 = []    
+    grid = np.linspace(0,Mmax,100)
+    for p1,p2 in zip(bins[0:-1],bins[1:]):
+        selection = (P>=p1)&(P<=p2)
+        subP_means.append(np.mean(P[selection]))
+        params = fit_erf(M[selection],detect_rate[selection])
+        model = erf_function(grid,params[0],params[1])
+        M95.append(grid[np.argmin(abs(model-percentage/100))])
 
     return np.array(subP_means), np.array(M95)
 

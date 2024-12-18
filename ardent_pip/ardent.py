@@ -29,7 +29,7 @@ class ARD_tableXY(object):
         if output_dir is None:
             output_dir = os.getcwd()+'/output/'
         self.output_dir = output_dir
-        self.tag = output_dir+'/'+self.starname+'_'
+        self.tag = output_dir+self.starname+'_'
 
     def ARD_Plot(self,new=True):
         if new:
@@ -154,7 +154,7 @@ class ARD_tableXY(object):
         self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='M', new=False) #axis_y_var='K'
         plt.subplot(2,1,2)
         self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='K', new=False) #axis_y_var='K'
-        plt.subplots_adjust(left=0.12,right=0.95,hspace=0.25,top=0.95,bottom=0.10)
+        plt.subplots_adjust(left=0.12,right=0.95,hspace=0.25,top=0.95,bottom=0.08)
 
 
     def ARD_DetectionLimitRV(self, rangeP=[2., 200.], rangeK=[0.1, 1.3], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
@@ -172,10 +172,10 @@ class ARD_tableXY(object):
         else:
             print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(output_file))
         
-        self.ARD_Plot_DataDL(output_file, percentage=[95,75,50])
+        self.ARD_Plot_DataDL(output_file, percentage=[95,75,50], nbins=6)
 
 
-    def ARD_Plot_DataDL(self, output_file=None, percentage=[95], nbins=15, axis_y_var='K', new=True):
+    def ARD_Plot_DataDL(self, output_file=None, percentage=[95], nbins=6, axis_y_var='K', new=True):
         """Plot the Detection Limit obtained from the .ARD_DetectionLimitRV() method"""
 
         if output_file is None:
@@ -201,10 +201,7 @@ class ARD_tableXY(object):
             title = r'$M_{*}$ = %.2f $M_{\odot}$'%(Mstar)
 
         detect_rate = detect_rate * 100.
-        if Nphases < 8:
-            cmap = plt.get_cmap('gnuplot', Nphases)
-        else:
-            cmap = plt.get_cmap('gnuplot', 8)
+        cmap = plt.get_cmap('gnuplot', 8)
         
         if new:
             fig = plt.figure(figsize=(6,4))
@@ -218,7 +215,6 @@ class ARD_tableXY(object):
             variable[variable>1.05*np.max(M)] = np.max(M)
             plt.scatter(planets2['period'],variable,color='k',marker='^',s=20,zorder=9)
             plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=50,zorder=10)
-
 
         plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
         
@@ -248,15 +244,19 @@ class ARD_tableXY(object):
 
         table_keplerian = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
 
-        if NlocalCPU == 0: #cluster
-            shift = int(sys.argv[1])
-            ardf.DynDL(shift, table_keplerian, D95, self.tag, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR)
-            
-        elif NlocalCPU > 0: #MCp
-            dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, table_keplerian, D95, self.output_dir, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR) for shift in range(N))
-
         self.output_file_STDL1 = self.tag+"AllStabilityRates.dat"
         self.output_file_STDL2 = self.tag+"Final_DynamicalDetectLim.dat"
+
+        if os.path.exists(self.output_file_STDL1):
+            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(output_file))
+        else:        
+            if NlocalCPU == 0: #cluster
+                shift = int(sys.argv[1])
+                ardf.DynDL(shift, table_keplerian, D95, self.tag, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR)
+                
+            elif NlocalCPU > 0: #MCp
+                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, table_keplerian, D95, self.output_dir, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR) for shift in range(N))
+
 
     def ARD_Plot_StabDL(self, data_driven='Data-driven_95MassLimits.dat', stability_driven='Final_DynamicalDetectLim.dat',new=True):
         """
@@ -269,9 +269,10 @@ class ARD_tableXY(object):
         stability_driven (string, optional): Filename of the dynamical detection limits
         """
         
-        P = np.genfromtxt(stability_driven, usecols=(0), skip_header=int(2))
-        M_stb = np.genfromtxt(stability_driven, usecols=(1), skip_header=int(2))
-        M_data = np.genfromtxt(data_driven, usecols=(1), skip_header=int(2))
+
+        P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
+        M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
+        M_data = np.genfromtxt(self.output_file_DL, usecols=(1), skip_header=int(2))
 
         indexes = np.argsort(P)
         P = np.array(P)[indexes]
