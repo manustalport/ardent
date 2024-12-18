@@ -502,6 +502,30 @@ def AnalyticStability(Mstar, a, e, M):
     return analytic_stab
 
 
+################### ORBIT CROSSING
+def OrbitCrossing(a, e):
+    """
+    Function checking if the osculating orbits of any consecutive planet pair cross in a planetary system. Returns True if the orbits of any consecutive planet pair cross. Returns False if none of the planet pairs has crossing orbits.
+    
+    Arguments
+    ---------
+    a, e (1D array): the semi-major axis (any unit) and orbital eccentricity of all the planets in the system.
+    
+    Output
+    ------
+    orb_cross (bool): True if the orbits of at least one planet pair cross. False otherwise.
+    """
+    orb_cross = False
+    NB_pairs = len(a) - 1
+    for i in range(NB_pairs):
+        apo_inner = a[i] * (1+e[i])
+        peri_outer = a[i+1] * (1-e[i+1])
+        if apo_inner >= peri_outer:
+            orb_cross = True
+            
+    return orb_cross
+
+
 #############################
 ################### MAIN CODE
 #def DynDL(shift, Nplanets, param_file, DataDrivenLimitsFile, output_file, DetectLim0File):
@@ -704,12 +728,15 @@ def DynDL(sys_name, shift, Nplanets, param_file, DataDrivenLimitsFile):
     os.chdir(path_output)
     stab_rate = AnalyticStability(Mstar, a, e, M)
     if stab_rate == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we perform the numerical simulations to precise the system stability
-        stab = 0.
-        for j in range(Nphases):
-            phase[indexes[-1]] = phases_inject[j]
-            stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
-
-        stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
+        crossing = OrbitCrossing(a, e)
+        if crossing == True: # If orbits are crossing, for sure the system is unstable. No need of numerical simulations.
+            stab_rate = 0.
+        else:
+            stab = 0.
+            for j in range(Nphases):
+                phase[indexes[-1]] = phases_inject[j]
+                stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+            stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
     else:
         stab_rate = 100
         
@@ -725,12 +752,17 @@ def DynDL(sys_name, shift, Nplanets, param_file, DataDrivenLimitsFile):
             if q == 0 and M_lim100[shift] > 0.001*mE_S:
                 M[indexes[-1]] = 0.001*mE_S
                 a[indexes[-1]] = P_inject[shift]**(2./3.) * ((Mstar+M[indexes[-1]])/(1.+mE_S))**(1./3.)
-                stab = 0.
-                for j in range(Nphases):
-                    phase[indexes[-1]] = phases_inject[j]
-                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
-
-                stab_rate = round((stab / Nphases) * 100.)
+                
+                crossing = OrbitCrossing(a, e)
+                if crossing == True:
+                    stab_rate = 0.
+                else:
+                    stab = 0.
+                    for j in range(Nphases):
+                        phase[indexes[-1]] = phases_inject[j]
+                        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+                    stab_rate = round((stab / Nphases) * 100.)
+                    
                 file = open(output_file, 'a')
                 file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
                 file.close()
@@ -751,12 +783,17 @@ def DynDL(sys_name, shift, Nplanets, param_file, DataDrivenLimitsFile):
             else:
                 M[indexes[-1]] = (M_max+M_min) / 2.
                 a[indexes[-1]] = P_inject[shift]**(2./3.) * ((Mstar+M[indexes[-1]])/(1.+mE_S))**(1./3.)
-                stab = 0.
-                for j in range(Nphases):
-                    phase[indexes[-1]] = phases_inject[j]
-                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR)
-
-                stab_rate = round((stab / Nphases) * 100.)
+                
+                crossing = OrbitCrossing(a, e)
+                if crossing == True:
+                    stab_rate = 0.
+                else:
+                    stab = 0.
+                    for j in range(Nphases):
+                        phase[indexes[-1]] = phases_inject[j]
+                        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR)
+                    stab_rate = round((stab / Nphases) * 100.)
+                    
                 file = open(output_file, 'a')
                 file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
                 file.close()
