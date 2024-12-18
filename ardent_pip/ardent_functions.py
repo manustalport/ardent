@@ -453,9 +453,9 @@ def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     table_keplerian = table_keplerian.sort_values(by='period') # ---------- Sort the parameters by increasing a
     
     if dt is None:
-        dt = np.min(table_keplerian['period'])/365.25/40
+        dt = np.min(table_keplerian['period'])/365.25/50
     if T is None:
-        T = 10*np.max(table_keplerian['period'])/365.25
+        T = 100000*np.max(table_keplerian['period'])/365.25
     dt = dt*2*np.pi
 
     #index0
