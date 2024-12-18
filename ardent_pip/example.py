@@ -36,7 +36,7 @@ if False:
 
     import ardent as ard
     
-    star = 'HD48948'
+    star = 'HD3651'
     ins = 'HARPN'
     root = '/Users/cretignier/Documents/Yarara/'+star+'/data/s1d/'+ins
     output_directory = root+'/DETECTION_LIMIT/'
@@ -57,19 +57,12 @@ if False:
         p, k, e, omega, mean_long = keplerian.loc[line][['p','k','e','peri','long']].astype('float')
         vec.ARD_AddPlanets(p=p, k=k, e=e, omega=omega, asc_node = 0.0, mean_long=mean_long, inc=90.0) #set the planets
 
-    vec.ARD_DetectionLimitRV_auto(fap_level=0.01)
-
-    plt.figure(figsize=(10,5))
-    plt.subplot(1,2,1)
-    vec.ARD_Plot_DataDL(nbins=10, percentage=95, axis_y_var='M', new=False) #axis_y_var='K'
-    plt.subplot(1,2,2)
-    vec.ARD_Plot_DataDL(nbins=10, percentage=95, axis_y_var='K', new=False) #axis_y_var='K'
-    plt.subplots_adjust(left=0.08,right=0.97,wspace=0.25)
+    vec.ARD_DetectionLimitRV_auto(fap_level=0.01) 
 
     vec.ARD_DetectionLimitStab(
         NlocalCPU = 1,
-        integration_time = 1000, 
-        dt = 1/365.25, 
+        integration_time = 1000, #years
+        dt = 1/365.25,           #years
         Nphases = 1, 
         min_dist = 3, 
         max_dist = 5, 

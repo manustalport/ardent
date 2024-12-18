@@ -4,10 +4,12 @@ import pickle
 import sys
 
 import ardent_functions as ardf
+import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
+from matplotlib.cm import ScalarMappable
 
 NlocalCPU = int(3) # The number of CPUs allocated to compute the dynamical detection limits, to fasten the computation.
     # If NlocalCPU is set to 0, the program will be compatible with external cluster.
@@ -147,12 +149,12 @@ class ARD_tableXY(object):
         pickle.dump(f,open(output_file,'wb'))
         self.output_file_DL = output_file
 
-        plt.figure(figsize=(10,5))
-        plt.subplot(1,2,1)
-        self.ARD_Plot_DataDL(nbins=10, percentage=95, axis_y_var='M', new=False) #axis_y_var='K'
-        plt.subplot(1,2,2)
-        self.ARD_Plot_DataDL(nbins=10, percentage=95, axis_y_var='K', new=False) #axis_y_var='K'
-        plt.subplots_adjust(left=0.08,right=0.97,wspace=0.25)
+        plt.figure(figsize=(5,10))
+        plt.subplot(2,1,1)
+        self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='M', new=False) #axis_y_var='K'
+        plt.subplot(2,1,2)
+        self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='K', new=False) #axis_y_var='K'
+        plt.subplots_adjust(left=0.12,right=0.95,hspace=0.25,top=0.95,bottom=0.10)
 
 
     def ARD_DetectionLimitRV(self, rangeP=[2., 200.], rangeK=[0.1, 1.3], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
@@ -170,10 +172,10 @@ class ARD_tableXY(object):
         else:
             print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(output_file))
         
-        self.ARD_Plot_DataDL(output_file, percentage=95)
+        self.ARD_Plot_DataDL(output_file, percentage=[95,75,50])
 
 
-    def ARD_Plot_DataDL(self, output_file=None, percentage=95, nbins=15, axis_y_var='K', new=True):
+    def ARD_Plot_DataDL(self, output_file=None, percentage=[95], nbins=15, axis_y_var='K', new=True):
         """Plot the Detection Limit obtained from the .ARD_DetectionLimitRV() method"""
 
         if output_file is None:
@@ -188,8 +190,6 @@ class ARD_tableXY(object):
         detect_rate = output['detect_rate']
         Nphases = output['Nphases']
         Mstar = output['Mstar']
-
-        subP_means, M95 = ardf.Stat_DataDL(output_file, percentage=percentage, nbins=nbins, axis_y_var=axis_y_var)
 
         if axis_y_var!='M':
             ylabel = r'\large{K [m/s]}'            
@@ -214,11 +214,20 @@ class ARD_tableXY(object):
         if planets is not None:
             planets2 = planets.copy()
             planets2 = planets2.loc[(planets2['period']>np.min(P))&(planets2['period']<np.max(P))]
+            variable = np.array(planets2[keyword])
+            variable[variable>1.05*np.max(M)] = np.max(M)
+            plt.scatter(planets2['period'],variable,color='k',marker='^',s=20,zorder=9)
             plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=50,zorder=10)
 
-        plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap)
+
+        plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
         
-        plt.plot(subP_means, M95, color='black',label='%.0f \%%'%(percentage),marker='o')
+        norm = mcolors.Normalize(vmin=0, vmax=100)
+        sm = ScalarMappable(cmap=cmap, norm=norm)
+        for n,p in enumerate(percentage):
+            subP_means, M95 = ardf.Stat_DataDL(output_file, percentage=p, nbins=nbins, axis_y_var=axis_y_var)
+            plt.plot(subP_means, M95, color=sm.to_rgba(p),label='%.0f \%%'%(p),marker='o',markeredgecolor='k')
+
         plt.legend(loc=2)
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
