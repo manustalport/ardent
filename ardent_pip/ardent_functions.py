@@ -1,0 +1,562 @@
+import os
+import pickle
+from random import uniform
+
+import numpy as np
+import pandas as pd
+import rebound
+import reboundx
+from PyAstronomy.pyTiming import pyPeriod
+from reboundx import constants
+from scipy.interpolate import griddata
+from tqdm import tqdm
+
+# ---------- Define constants
+
+mE_S = 3.986004e14 / 1.3271244e20 # Earth-to-Solar mass ratio
+mJ_S = 1.2668653e17 / 1.3271244e20 # Jupiter-to-Solar mass ratio
+
+Mass_sun = 1.988475e30
+Mass_earth = Mass_sun*mE_S
+Mass_jupiter = Mass_sun*mJ_S
+
+
+def ang_rad(angle):
+    angle = angle * np.pi / 180.
+    angle = (angle + np.pi) % (2*np.pi) - np.pi # Conversion into [-pi, pi]
+    return angle
+
+def AmpStar(ms, periode, amplitude, i=90, e=0, code='Sun-Earth'):
+    """(mass_star , mass_planet, period, amplitude , i=90 , e=0,[code]) return the unknown from vecteur (value fixed at 0) of the RV signal giving the star mass (solar mass) ans the period (year) amplitude in (meter/seconde). Mass can be given in solar, earth and jupitar mass with the code option Sun-Earth and Sun-Jupiter"""    
+    periode = periode/365.25
+    ms = Mass_sun*ms
+    time = periode*365.25*24*3600
+    coeff = np.power((ms**2*np.power(1-e**2, 1.5)*time*amplitude**3/(2*np.pi*6.67e-11)), 1/3.)
+
+    if code=='Sun-Earth':
+        mp = coeff/Mass_earth
+    if code=='Sun-Jupiter':
+        mp =  coeff/Mass_jupiter
+
+    semi_axis = periode**(2./3.) * ((ms+coeff/Mass_sun)/(Mass_sun+Mass_earth))**(1./3.)
+    return mp, semi_axis
+
+
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 1: data-driven detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, Nsamples=int(2000), Nphases=int(10), fapLevel=0.01):
+    """
+    Computation of data-driven detection limits. This function outputs a file containing the 95% mass detection limits for periods between Pmin and Pmax.
+    
+    Arguments
+    ---------
+    sys_name (string): the name of the system under study.
+    rvFile (string): file name of the RV residual timeseries, i.e. RV with the Keplerians of known planets removed.
+    Mstar (float): stellar mass [M_Sun]
+    rangeP, rangeK (list of floats): minimum and maximum orbital periods and RV semi-amplitudes with which to inject a planet (rangeP=[Pmin,Pmax] units of [days] and rangeK=[Kmin,Kmax] units of [RV rms])
+    Nsamples (int, optional): the number of injected planets in the 2D space (P, M) at a given orbital phase
+    Nphases (int, optional): the number of different orbital phases with which to inject a given planet in the 2D space (P, M). The phase is then spread evenly in [0, 2pi[. The total number of injection-recovery tests corresponds to Nsamples*Nphases.
+    fapLevel (float, optional): the FAP threshold under which we consider a signal as significant in the GLS periodogram.
+    nbins (int, optional): the number of period bins with which to output the 95% mass detection limits.
+    plot (bool, optional): plot the result. default=True.
+    """
+    if type(rvFile)==str:
+        t = np.genfromtxt(rvFile, usecols=(0))
+        rv = np.genfromtxt(rvFile, usecols=(1))
+        rv_err = np.genfromtxt(rvFile, usecols=(2))
+    else:
+        t = rvFile['jdb']
+        rv = rvFile['rv']
+        rv_err = rvFile['rv_err']
+
+    output_dir = os.path.dirname(output_file)+'/'
+
+    Pmin = rangeP[0]
+    Pmax = rangeP[1]
+    Kmin = rangeK[0]
+    Kmax = rangeK[1]
+    
+    detect_rate = np.zeros(Nsamples)
+    phase = np.linspace(-np.pi, np.pi, num=Nphases, endpoint=False)
+    
+    P = np.array([10**(uniform(np.log10(Pmin), np.log10(Pmax))) for i in range(Nsamples)])
+    K = np.array([uniform(Kmin, Kmax) for i in range(Nsamples)])
+    M = (K/28.435) * Mstar**(2./3.) * (P/365.25)**(1./3.) # [M_Jup]
+    M = M * Mass_jupiter / Mass_earth # [M_Earth]
+
+    for i in tqdm(range(Nsamples)):
+        detect = int(0)
+        for j in range(Nphases):
+            rv_simu = rv - K[i] * np.sin((t*2*np.pi/P[i])+phase[j])
+
+            if 0.6*Pmin > 1.1:
+                period_start = 0.6*Pmin # Periodogram search starts at 40% below of Pmin
+            else:
+                period_start = 1.1
+            period_end = 1.4 * Pmax # Periodogram search ends at 40% above Pmax
+            
+            clp = pyPeriod.Gls((t, rv_simu, rv_err), Pbeg=period_start, Pend=period_end, ls=True, norm="ZK")
+            power = clp.power
+            plevels = clp.powerLevel(fapLevel)
+            imax = np.argmax(power)
+            Pmaxpeak = 1/clp.freq[imax]
+
+            if power[imax] > plevels and abs(P[i]-Pmaxpeak) < (P[i]*5./100): # power of max peak above 1% FAP and criterion of 5% on P
+                detect += 1
+
+        detect_rate[i] = detect / Nphases
+    
+    output = {'P':P,'K':K,'M':M,'detect_rate':detect_rate,'Nphases':Nphases,'Mstar':Mstar,'FAP':fapLevel*100}
+    pickle.dump(output,open(output_file,'wb'))
+
+    file = open(output_dir+'Injection-recovery_tests.dat', 'w')
+    file.write('Period[days] Mass[M_Earth] DetectionRate[%]' + '\n')
+    file.write('------------ ------------- ----------------' + '\n')
+    for i in range(len(P)):
+        file.write(str(P[i]) + ' ' + str(M[i]) + ' ' + str(detect_rate[i]) + '\n')
+    file.close()
+
+def Stat_DataDL(output_file, percentage=95, nbins=20, axis_y_var='M'):
+
+    output = pd.read_pickle(output_file)
+    P = output['P']
+    M = output[axis_y_var]
+    detect_rate = output['detect_rate']
+    Nphases = output['Nphases']
+    Pmin = np.min(P) ; Pmax = np.max(P)
+    Mmin = np.min(M) ; Mmax = np.max(M)
+
+    pi = np.linspace(np.log10(Pmin), np.log10(Pmax), 100)
+    mi = np.linspace(Mmin, Mmax, 100)
+    pi, mi = np.meshgrid(pi, mi)
+    di = griddata((np.log10(P), M), detect_rate, (pi, mi), method='cubic')
+
+    bins = np.linspace(np.log10(Pmin), np.log10(Pmax), nbins+1)
+
+    sub_P = []
+    sub_M = []
+    for i in range(len(P)):
+        if detect_rate[i] < 0.9999:
+            sub_P = np.append(sub_P, P[i])
+            sub_M = np.append(sub_M, M[i])
+
+    digitized = np.digitize(np.log10(sub_P), bins)
+    subP_means = [sub_P[digitized == i].mean() for i in range(1, len(bins))]
+
+    M_bins = [sub_M[digitized == i] for i in range(1, len(bins))]
+    q = percentage / 100.
+    M95 = [np.quantile(M_bins[i],q) for i in range(nbins)] # The x% mass limit of data-driven detection for each period bin
+
+    return np.array(subP_means), np.array(M95)
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 2: dynamical detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
+################### PART NAFF
+def naf(
+  t,
+  f,
+  nfreqs=5,
+  circ=2 * np.pi,
+  tstep=None,
+  secant_xtol=1e-15,
+  secant_relftol=1,
+  secant_Nmax=10,
+  basis_maxprod=0.5,
+):
+    """NAFF algorithm (see Laskar, 2003)
+    t, f are arrays of time (equally spaced) and signal values.
+    nfreqs is the maximum desired number of frequencies in the decomposition.
+    Depending on the signal the algorithm may return less terms than nfreqs.
+    circ is the circumference of a unit circle (default is 2.pi but can be 360, 1, etc.)
+    tstep = is the time step. If not provided it is set to t[1]-t[0].
+    """
+    N = len(t)
+    N = N - N % 6
+    step = t[1] - t[0] if tstep is None else tstep
+    T = N / 2 * step
+    x = t[:N]
+    g = f[:N].astype(complex)
+    nf = nfreqs
+    freqs = np.empty(nf)
+    amps = np.empty(nf, dtype=complex)
+    vecs = np.empty((nf, N), dtype=complex)
+    basis = np.zeros((nf, nf), dtype=complex)
+    no_more_freq = False
+    for n in range(nf):
+        freqs[n], vecs[n, :], amps[n] = _naf_findmax(
+          x,
+          g * _naf_xi((x - x[0]) / T - 1),
+          step,
+          N,
+          secant_xtol,
+          secant_relftol,
+          secant_Nmax,
+        )
+        # Check if frequency has already been detected
+        for k in range(n):
+            basis[n, k] = _naf_prod(vecs[n, :] * _naf_xi((x - x[0]) / T - 1), vecs[k, :])
+            if abs(basis[n, k]) > basis_maxprod:
+                no_more_freq = True
+        # stop the algorithm if it is the case
+        if no_more_freq:
+            nf = n
+            freqs = freqs[:n]
+            amps = amps[:n]
+            basis = basis[:n, :n]
+            break
+        # completing orthonormal basis and projecting
+        # module of the orthogonal vector
+        mod = np.sqrt(1 - sum(abs(basis[n, k]) ** 2 for k in range(n)))
+        # complete basis matrix and nth vector
+        basis[n, n] = mod
+        vecs[n, :] = vecs[n, :] / mod
+        amps[n] = amps[n] / mod
+        for k in range(n):
+            vecs[n, :] -= basis[n, k] * vecs[k, :] / mod
+        g -= amps[n] * vecs[n, :]
+    # perform the basis change
+    amps = np.linalg.solve(basis.T, amps)
+    return (freqs * circ / (2 * np.pi), amps)
+
+
+def nafprint_header(fundnames, fundfreqs, outfile=None):
+    """Write the header of a naf output file
+    If outfile is not provided, the standard output is used
+    """
+    print('Fundamental frequencies', file=outfile)
+    for k in range(len(fundfreqs)):
+        print(fundnames[k] + ':', fundfreqs[k], file=outfile)
+
+
+def _naf_xi(t):
+    """Weight function for the NAFF algorithm (see Laskar, 2003)."""
+    return 1 + np.cos(np.pi * t)
+
+
+def _naf_findmax(t, f, step, N, xtol, relftol, Nmax):
+    """Find the maximum amplitude of the Fourier transform of f"""
+
+    # Derivative of the amplitude
+    def dAmp(nu):
+        einu = np.exp(1j * nu * t)
+        return 2 * np.real(1j * _naf_prod(f, einu) * np.conj(_naf_prod(t * f, einu)))
+
+    # ifft of f to find a starting value for the secant method
+    Amp = np.abs(np.fft.ifft(f))
+    # Frequencies given by the ifft
+    nus = -2 * np.pi / step * np.fft.fftfreq(N)
+    dnu = 2 * np.pi / step / N
+    # Frequency at the ifft maximum
+    nu0 = nus[np.argmax(Amp)]
+    # Derivative of amplitude
+    dA0 = dAmp(nu0)
+    # Find the zero of the derivative (maximum of amplitude)
+    if dA0 > 0:
+        nu = _naf_secant(dAmp, nu0 + dnu, nu0, xtol, relftol, Nmax)
+    else:
+        nu = _naf_secant(dAmp, nu0 - dnu, nu0, xtol, relftol, Nmax)
+    einut = np.exp(1j * nu * t)
+    return (nu, einut, _naf_prod(f, einut))
+
+
+def _naf_prod(f, g):
+    """Integral of f * conj(g)"""
+    return sum(f * np.conj(g)) / len(f)
+
+
+def _naf_secant(f, a0, b0, xtol, relftol, Nmax):
+    """Secant method to find the zero of f"""
+    a = a0
+    b = b0
+    fa = f(a0)
+    fb = f(b0)
+    N = 0
+    while fb != 0 and abs(a - b) > xtol and abs(fa / fb - 1) > relftol and Nmax > N:
+        c = b + (a - b) * fb / (fb - fa)
+        a = b
+        fa = fb
+        b = c
+        fb = f(b)
+        N += 1
+    return b
+
+  
+################### HILL RADIUS
+def HillRad(a, Mp, Mstar):
+    """Hill radius [AU]:
+    r_H = a * (m1/(3*m0))**(1./3.)
+    , where the indexes 0, 1 refer to the star, and planet"""
+
+    mE_S = 3.986004e14 / 1.3271244e20
+    r_H = a * (Mp/(3*Mstar))**(1./3.)
+    
+    return r_H
+
+################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
+def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=1):
+    """Function for the dynamical evolution followed with stability estimation of the orbits.
+    KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, lam, ecc, w, inc, Omega, Mass] where
+        a is semi-major axis [AU]
+        lam is mean longitude [rad]
+        ecc is orbital eccentricity
+        w is argument of perisatron [rad]
+        inc is orbital inclination [[rad]
+        Omega is longitude of ascending node [rad]
+        Mass is planetary mass [M_Sun]
+    Mstar: stellar mass [M_Sun]
+    Nplanets: number of KNOWN planets (not counting the injected body)
+    T: Total integration time
+    dt: rebound integration timestep
+    min_dist and max_dist: The minimum and maximum allowed distances, respectively. The former serves as close encounter criterion, the latter as escape criterion.
+    Noutputs: the number of output times desired to compute the orbital stability. Default is 20000.
+    NAFF_Thresh: The NAFF threshold above which the system is considered unstable. Default is 0. """
+    Nbodies = int(Nplanets + 1) # The total number of bodies excluding the star, i.e. Nplanets + 1 injected planet
+    
+    a = KepParam[0]
+    phase = KepParam[1]
+    e = KepParam[2]
+    w = KepParam[3]
+    inc = KepParam[4]
+    O = KepParam[5]
+    M = KepParam[6]
+    
+    if ML == True: # Mean Longitude is provided
+        sim = rebound.Simulation()
+        sim.add(m=Mstar)
+        sim.add(m=M[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+        q = int(1)
+        while q < len(a):
+            sim.add(primary=sim.particles[0], m=M[q], a=a[q], l=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q]) # Infos sur les definitions des parametres orbitaux et leurs "unites": voir 'REBOUND: infos pratiques' dans Notes.
+            q += 1
+            
+    elif ML == False: # Mean Anomaly is provided
+        sim = rebound.Simulation()
+        sim.add(m=Mstar)
+        sim.add(m=M[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+        q = int(1)
+        while q < len(a):
+            sim.add(primary=sim.particles[0], m=M[q], a=a[q], M=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q]) # Infos sur les definitions des parametres orbitaux et leurs "unites": voir 'REBOUND: infos pratiques' dans Notes.
+            q += 1
+      
+    sim.move_to_com()
+    sim.dt = dt
+    sim.integrator = "ias15" # REMARQUE: integrateur non symplectique utilise par soucis de generalite avec l'etude dynamique: on veut pouvoir etendre l'etude aux systemes binaires.
+
+    sim.exit_max_distance = max_dist
+    sim.exit_min_distance = min_dist
+    
+    if GR == 1:
+        ##*************** REBOUNDX PART *****************
+        rebx = reboundx.Extras(sim)
+        gr = rebx.load_force("gr")
+        rebx.add_force(gr)
+        gr.params["c"] = constants.C
+        ##************************************************
+        eilambda = np.zeros((Nbodies, Noutputs))
+        time = np.zeros(Noutputs)
+    elif GR == 0:
+        eilambda = np.zeros((Nbodies, Noutputs))
+        time = np.zeros(Noutputs)
+
+    dt_output = round(T / (Noutputs * dt / (2*np.pi))) # The number of timesteps between consecutive outputs
+
+    try:
+        for j in range(Noutputs):
+            t_output = dt_output*(j+1)*dt
+            sim.integrate(t_output) # sans le 2eme argument, on a implicitement que exact_finish_time=1
+            time[j] = t_output/(2*np.pi)
+
+            for q in range(Nbodies):
+                eilambda[q][j] = sim.particles[q+1].l
+                
+        ######### stability computation -- NAFF algorithm
+        var_freq = np.zeros(Nbodies)
+        t_NAFF = np.arange(1,int(Noutputs/2 + 1)) # Vecteur d'entiers allant de 1 a Noutputs/2 inclus
+        Delta_t = time[0]
+
+        for i in range(Nbodies):
+            freq1, amp = naf(t_NAFF, eilambda[i][:int(Noutputs/2)],1)
+            freq1 = freq1 / Delta_t
+            freq2, amp = naf(t_NAFF, eilambda[i][int(Noutputs/2):],1)
+            freq2 = freq2 / Delta_t
+            #################################################################################
+            var_freq_1 = abs(freq2-freq1 - 1./(2*Delta_t)).item()
+            var_freq_2 = abs(freq2-freq1).item()
+            var_freq_3 = abs(freq2-freq1 + 1./(2*Delta_t)).item()
+            delta_n = min(var_freq_1,var_freq_2,var_freq_3)
+
+            mE_S = 3.986004e14 / 1.3271244e20
+            n = a[i]**(-1.5) * 2*np.pi * ((Mstar+M[i])/(1+mE_S))**0.5
+            var_freq[i] = np.log10(abs(delta_n/n))
+
+        NAFF_max = max(var_freq)
+
+        if NAFF_max < NAFF_Thresh:
+            stab = 1.
+        else:
+            stab = 0.
+                
+
+    except rebound.Escape:
+        stab = 0.
+
+    except rebound.Encounter:
+        stab = 0.
+
+    return stab
+
+
+
+#############################
+################### MAIN CODE
+#def DynDL(shift, Nplanets, param_file, DataDrivenLimitsFile, output_file, DetectLim0File):
+def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=True, GR=True):
+    """
+    Computation of the dynamical detection limits
+    
+    Arguments
+    ---------
+    shift (int): index indicating at which value of the period one computes the dynamical detection limits (for parallel computations)
+    Nplanets (int): the number of known planets in the system (not counting for the injected one)
+    param_file (string): name of the parameters file
+    DataDrivenLimitsFile (string): name of the data-driven detection limits file
+    output_file (string): name of the extensive output file
+    DetectLim0File (string): name of the dynamical detection limits output file
+    """
+    
+    output_file = output_dir+"AllStabilityRates.dat"
+    DetectLim0File = output_dir+"Final_DynamicalDetectLim.dat"
+    # --- If this is the first call to this function, create the output files
+    if shift == int(0):
+        file = open(output_file, 'a')
+        file.write('Period Mass Stability_rate' + '\n')
+        file.write('------ ---- --------------' + '\n')
+        file.close()
+
+        file0 = open(DetectLim0File, 'a')
+        file0.write('Period Mass Stability_rate' + '\n')
+        file0.write('------ ---- --------------' + '\n')
+        file0.close()
+    
+    # ---------- Get the parameters
+
+    Nplanets = len(table_keplerian)
+
+    NAFF_Thresh = int(NAFF_Thresh)
+    GR = int(GR)
+
+    # ---------- Extract the period and mass of the injected planet, according to the data-driven detection limits. Then convert P to a.
+    P_inject = np.array(D95['period'])
+    M_lim100 = np.array(D95['mass']) 
+    a_lim100 = (P_inject/365.25)**(2./3.) * ((Mstar*Mass_sun + M_lim100* Mass_earth)/(Mass_sun+Mass_earth))**(1./3.)
+
+    test_particle = np.array([P_inject[shift],0,0,0,0,0,0,90,M_lim100[shift],a_lim100[shift]])
+    table_keplerian.loc[len(table_keplerian)] = test_particle
+    index0 = np.argsort(table_keplerian['period'].values)[-1]
+    table_keplerian = table_keplerian.sort_values(by='period') # ---------- Sort the parameters by increasing a
+    
+    if dt is None:
+        dt = np.min(table_keplerian['period'])/365.25/40
+    if T is None:
+        T = 10*np.max(table_keplerian['period'])/365.25
+    dt = dt*2*np.pi
+
+    #index0
+
+    P = np.array(table_keplerian['period'])/365                # [years]
+    K = np.array(table_keplerian['semi-amp'])
+    e = np.array(table_keplerian['ecc'])
+    w = ang_rad(np.array(table_keplerian['periastron']))
+    O = ang_rad(np.array(table_keplerian['asc_node']))
+    inc = ang_rad(np.array(table_keplerian['i']))
+    M = np.array(table_keplerian['mass']) *mE_S                # [MSun]
+    a = np.array(table_keplerian['semimajor'])                 # [AU]
+    phase = ang_rad(np.array(table_keplerian['mean_long']))
+    ML = True
+    
+    params = [a,phase,e,w,inc,O,M] # Keep the order of the elements! a,lam,e,w,inc,O,M
+    phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, I generate Nphases points with constant interval in [start, stop[ (the last value is excluded)
+    
+    min_dist = min_dist * HillRad(a[0], M[0], Mstar)
+    max_dist = max_dist * a[-1]
+
+    P_inject = P_inject/365.25
+
+    # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
+    print(' [INFO] Processing stability estimation at period bin ' + str(shift+1))
+    stab = 0.
+    for j in range(Nphases):
+        #print(" [INFO] Phase tested : %.0f / %.0f"%(j+1,Nphases))
+        phase[index0] = phases_inject[j]
+        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+
+    stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
+    file = open(output_file, 'a')
+    file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+    file.close()
+
+    if stab_rate <= 0.1: # If the rate of stability is smaller than 0.1%
+        Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])
+        dM = 1000000.
+        q = int(0)
+        while dM > Thresh:
+            print(" [INFO] Processing period number = %.0f"%(shift+1))
+            if q == 0 and M_lim100[shift] > 0.001*mE_S:
+                M[index0] = 0.001*mE_S
+                a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
+                stab = 0.
+                for j in range(Nphases):
+                    phase[index0] = phases_inject[j]
+                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+
+                stab_rate = round((stab / Nphases) * 100.)
+                file = open(output_file, 'a')
+                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+                file.close()
+
+                if stab_rate > 0.1:
+                    M_max = M_lim100[shift]
+                    M_min = 0.001*mE_S
+                    dM = M_max - M_min
+
+                else:
+                    dM = 0. # Get out of the loop
+                    Mlim = M[index0]
+
+            elif q == 0 and M_lim100[shift] == 0.001*mE_S:
+                dM = 0. # Get out of the loop
+                Mlim = M[index0]
+
+            else:
+                M[index0] = (M_max+M_min) / 2.
+                a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
+                stab = 0.
+                for j in range(Nphases):
+                    phase[index0] = phases_inject[j]
+                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR)
+
+                stab_rate = round((stab / Nphases) * 100.)
+                file = open(output_file, 'a')
+                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+                file.close()
+
+                if stab_rate > 0.1:
+                    M_min = M[index0]
+
+                elif stab_rate <= 0.1:
+                    M_max = M[index0]
+
+                dM = M_max - M_min
+                Mlim = M_max
+
+            q += 1
+
+        file = open(DetectLim0File, 'a')
+        file.write(str(P_inject[shift]*365.25) + ' ' + str(Mlim/mE_S) + ' ' + str(stab_rate) + '\n')
+        file.close()
+
+    else:
+        file = open(DetectLim0File, 'a')
+        file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+        file.close()
