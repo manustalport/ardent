@@ -1,0 +1,27 @@
+Mstar 1.18 #MSun
+P_1 0.7195633464387315 #days
+ML_1 2.5671593195705618 #rad
+e_1 0.0
+w_1 0.0 #rad
+i_1 0.0 #rad
+O_1 0.0 #rad
+K_1 3.638117607839936 #m/s
+P_2 873.165161726717 #days
+ML_2 0.08451636698558307 #rad
+e_2 0.8453792935345198
+w_2 0.7282862595131793 #rad
+i_2 0.0 #rad
+O_2 0.0 #rad
+K_2 196.09810307421822 #m/s
+e_inject 0.0
+w_inject 0.0 #rad
+i_inject 0.0 #rad
+O_inject 0.0 #rad
+T 1000. # Total integration time [years]
+dt 0.0001 # The integration timestep [years]
+Nphases 3 
+min_dist 3. # Close-encounter criterion in units of inner planet Hill Radius
+max_dist 5. # Escape criterion in units of a_outer
+Noutputs 20000 # The number of output snapshots used in the stability analysis.
+NAFF_Thresh 0.0 # The NAFF stability threshold
+GR 1 # Activate General Relativity? Yes: 1, No: 0
