@@ -407,7 +407,7 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs
 #############################
 ################### MAIN CODE
 #def DynDL(shift, Nplanets, param_file, DataDrivenLimitsFile, output_file, DetectLim0File):
-def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=True, GR=True):
+def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=1.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=True, GR=True):
     """
     Computation of the dynamical detection limits
     
