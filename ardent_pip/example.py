@@ -14,18 +14,10 @@ vec.ARD_Set_output_dir(output_directory)
 
 #vec.ARD_ImportPlanets('/Users/cretignier/Documents/Python/ardent/system_parameters.dat')
 
-##read a static file
 #vec.ARD_AddPlanets(p=0.7195, k=3.638, e=0.00, omega=0.0, asc_node = 0.0, mean_long=147, inc=90.0) #set the planets
 vec.ARD_AddPlanets(p=873.1, k=196.1, e=0.85, omega=42.0, asc_node = 0.0, mean_long=5, inc=90.0) #set the planets
 
 vec.ARD_DetectionLimitRV_auto(fap_level=0.01)
-
-plt.figure(figsize=(10,5))
-plt.subplot(1,2,1)
-vec.ARD_Plot_DataDL(nbins=10, percentage=95, axis_y_var='Mass', new=False) #axis_y_var='K'
-plt.subplot(1,2,2)
-vec.ARD_Plot_DataDL(nbins=10, percentage=95, axis_y_var='K', new=False) #axis_y_var='K'
-plt.subplots_adjust(left=0.08,right=0.97,wspace=0.25)
 
 vec.ARD_DetectionLimitStab(
     NlocalCPU = 1, 
