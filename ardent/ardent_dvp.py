@@ -436,6 +436,71 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, No
         return stab
 
 
+################### ANALYTIC STABILITY CRITERION
+def AnalyticStability(Mstar, a, e, M):
+    """
+    Analytic estimation of orbital stability following the AMD framework (Laskar & Petit 2017). This function combines the Hill AMD stability criterion of Petit & Laskar (2018) with the AMD criterion in presence of first-order mean-motion resonances (MMR) of Petit & Laskar (2017).
+    
+    Arguments
+    ---------
+    Mstar (float): the stellar mass [M_Sun]
+    a, e, M (1D arrays): the semi-major axis [AU], orbital eccentricity, and mass [M_Sun] of all the planets in the modelled system.
+    
+    Output
+    ------
+    analytic_stab (int): indicator of orbital stability. 1: AMD-stable ; 0: AMD-unstable, indicating that further numerical investigations are needed.
+    """
+    NB_pairs = len(a) - 1
+    # ---------- Define G
+    G = 6.6743*10**(-11) # The universal gravitation constant, in units of m^3/(kg*s^2)  ;  Value from CODATA 2018
+    ### Convert G in units of AU, Solar mass and year
+    G = G * 1.9884*10**30 # Converting kg in solar mass
+    G = G / (149597870700**3) # Converting meters in AU
+    G = G * 31557600**2 # Converting seconds in years
+        
+    alpha = np.zeros(NB_pairs)
+    gamma = np.zeros(NB_pairs)
+    epsilon = np.zeros(NB_pairs)
+    for i in range(NB_pairs):
+        alpha[i] = a[i] / a[i+1]
+        gamma[i] = M[i] / M[i+1]
+        epsilon[i] = (M[i]+M[i+1]) / Mstar
+    
+    # ---------- Computation of AMD for each planet pair
+    Lambda_ext = M * np.sqrt(G*Mstar*a)  # The Lambda coordinate of the Poincare canonical heliocentric reference frame, applied to the outer body of the considered pair.
+    C = np.zeros(NB_pairs) # The total angular momentum of each pair.
+    AMD = np.zeros(NB_pairs) # The AMD of each pair
+    
+    for i in range(NB_pairs):
+        C[i] = Lambda_ext[i]*(1-np.sqrt(1-e[i]**2)) + Lambda_ext[i+1]*(1-math.sqrt(1-e[i+1]**2))
+        AMD[i] = C[i] / Lambda_ext[i+1]
+    
+    # ---------- Selection and computation of the critical AMD
+    analytic_stab = 1 # binary number saying if the system is analytically stable (1) or unstable (0)
+    
+    for i in range(NB_pairs):
+        alpha_cir = 1 - (1.46*epsilon[i]**(2./7.))
+        alpha_R = 1 - 1.5*epsilon[i]**(1./4.) - 0.316*epsilon[i]**(0.5)
+        
+        if alpha[i] < alpha_cir and alpha[i] < alpha_R: # Hill
+            Cc_H = gamma[i] * alpha[i]**0.5 + 1 - (1+gamma[i])**1.5 * np.sqrt(alpha[i]/(gamma[i]+alpha[i]) * (1+3**(4./3.)*epsilon[i]**(2./3.)*gamma[i]/((1+gamma[i])**2)))
+            beta = AMD[i] / Cc_H
+            if beta >= 1.:
+                analytic_stab = 0
+            
+        elif alpha[i] < alpha_cir and alpha[i] >= alpha_R: # MMR
+            r = 0.80199
+            g = 3**4 * (1-alpha[i])**5 / (2**9 * r * epsilon[i]) - 32*r*epsilon[i] / (9*(1-alpha[i])**2)
+            Cc_MMR = (gamma[i] / (1+gamma[i])) * g**2 / 2.
+            beta = AMD[i] / Cc_MMR
+            if beta >= 1.:
+                analytic_stab = 0
+            
+        elif alpha[i] >= alpha_cir:
+            analytic_stab = 0
+    
+    return analytic_stab
+
 
 #############################
 ################### MAIN CODE
@@ -637,12 +702,17 @@ def DynDL(sys_name, shift, Nplanets, param_file, DataDrivenLimitsFile):
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
     print('Processing stability estimation at period bin ' + str(shift))
     os.chdir(path_output)
-    stab = 0.
-    for j in range(Nphases):
-        phase[indexes[-1]] = phases_inject[j]
-        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+    stab_rate = AnalyticStability(Mstar, a, e, M)
+    if stab_rate == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we perform the numerical simulations to precise the system stability
+        stab = 0.
+        for j in range(Nphases):
+            phase[indexes[-1]] = phases_inject[j]
+            stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, NAFF, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
 
-    stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
+        stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
+    else:
+        stab_rate = 100
+        
     file = open(output_file, 'a')
     file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
     file.close()
