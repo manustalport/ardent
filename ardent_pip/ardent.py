@@ -22,6 +22,7 @@ class ARD_tableXY(object):
         self.x = np.array(x)       # jdb times  
         self.y = np.array(y)       # RV time-series in m/s
         self.yerr = np.array(yerr) # RV uncertainties in m/s
+        self.baseline = np.round(np.max(self.x) - np.min(self.x),0)
         self.planets = []
         self.ARD_AddStar()
         self.ARD_Set_output_dir()
@@ -96,7 +97,7 @@ class ARD_tableXY(object):
         print('\n [INFO] Table updated: \n')
         print(printed_table)
 
-    def ARD_PlotPlanets(self, new=True):
+    def ARD_PlotPlanets(self, new=True, savefig=True, legend=True):
         table = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
         phases = np.linspace(0,2*np.pi,1000)
         phases2 = np.linspace(0,np.pi,1000)
@@ -117,15 +118,17 @@ class ARD_tableXY(object):
             X = np.array([xi,yi])
             R = np.array([[np.cos(np.pi/180*wi),-np.sin(np.pi/180*wi)],[np.sin(np.pi/180*wi),np.cos(np.pi/180*wi)]])
             X = np.dot(X.T,R).T
+            plt.plot(X[0],X[1],lw=4,color='white')
             if mi<50:
-                plt.plot(X[0],X[1],label=r'%.1f $M_{\oplus}$'%(mi))
+                plt.plot(X[0],X[1],label=r'%.2f $M_{\oplus}$'%(mi))
             else:
                 plt.plot(X[0],X[1],label=r'%.2f $M_{Jup}$'%(mi/318))
-        
+
         plt.plot(np.sin(phases),np.cos(phases),color='k',ls='-.',lw=1)
         plt.axhline(y=0,color='k',ls=':',lw=1,alpha=0.2)
         plt.axvline(x=0,color='k',ls=':',lw=1,alpha=0.2)
-        plt.legend()
+        if legend:
+            plt.legend(loc=2)
         plt.xlabel('X [AU]')
         plt.ylabel('Y [AU]')
 
@@ -139,12 +142,73 @@ class ARD_tableXY(object):
 
         plt.fill_between(hmax[0],hmin[1],hmax[1],alpha=0.1,color='g')
         plt.fill_between(hmax[0],-hmin[1],-hmax[1],alpha=0.1,color='g')
+        if savefig:
+            ax = plt.gca() ; xlim = ax.get_xlim()[1]
+            plt.savefig(self.tag+'Planetary_system.png', format='png', dpi = 300)
+            plt.xlim(-1.25,1.25)
+            plt.ylim(-1.25,1.25)
+            plt.savefig(self.tag+'Planetary_system_zoom.png', format='png', dpi = 300)
+            plt.xlim(-xlim,xlim)
+            plt.ylim(-xlim,xlim)
+
+    def ARD_Plot_MapUpperMass(self, x_au=1.25, detection_limit='RV'):
+
+        if detection_limit=='RV':        
+            statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=10, axis_y_var='M')
+        else:
+            P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
+            M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
+            statistic = [P,M_stb]
+
+        a = (statistic[0]/365.25)**(2./3.) * ((self.mstar*ardf.Mass_sun+statistic[1]*ardf.Mass_earth)/(ardf.Mass_sun+ardf.Mass_earth))**(1./3.)
+
+        grid = np.linspace(-x_au,x_au,1000)
+        Gx,Gy = np.meshgrid(grid,grid)
+        R = np.ravel(np.sqrt(Gx**2+Gy**2))
+        M = interp1d(a, statistic[1], kind='cubic', bounds_error=False, fill_value=np.nan)(R)
+        M = np.reshape(M,(1000,1000))
+        plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=16,cmap='gnuplot')
+        ax = plt.colorbar(pad=0)
+        ax.ax.set_ylabel('95-percent Mass limit detection')
+
+    def ARD_FinalPlot(self):
+        
+
+        fig = plt.figure(figsize=(14,7))
+        #plt.title(self.starname)
+
+        plt.subplot(1,2,1)
+        self.ARD_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV')
+
+        plt.subplot(1,2,2)
+        self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab')
+
+        plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
+        plt.savefig(self.tag+'Summary_analysis.png', format='png', dpi = 300)
+
+        fig = plt.figure(figsize=(14,7))
+
+        zoom = 1.25
+        plt.subplot(1,2,1)
+        self.ARD_PlotPlanets(new=False,savefig=False,legend=False)
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV')
+        plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
+
+        plt.subplot(1,2,2)
+        self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab')
+        plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
+
+        plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
+        plt.savefig(self.tag+'Summary_analysis_zoom.png', format='png', dpi = 300)
 
 
     def ARD_DetectionLimitRV_auto(self, rangeP=None, fap_level=0.01):
         
         if rangeP is None:
-            rangeP = [2,600]
+            rangeP = [2,int(np.round(self.baseline+5,-1))]
 
         
         print('\n [INFO] First iteration with low resolution')
@@ -200,6 +264,7 @@ class ARD_tableXY(object):
         plt.subplot(2,1,2)
         self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='K', new=False) #axis_y_var='K'
         plt.subplots_adjust(left=0.13,right=0.95,hspace=0.25,top=0.97,bottom=0.07)
+        plt.savefig(output_file.replace('.p','.png'), format='png', dpi = 300)
 
 
     def ARD_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.3], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
@@ -280,18 +345,32 @@ class ARD_tableXY(object):
         plt.savefig(output_file.replace('.p','.png'), format='png', dpi = 300)
     
 
-    def ARD_DetectionLimitStab(self, NlocalCPU=1, integration_time=None, dt=None, Nphases=3, min_dist=3, max_dist=5, Noutputs=20000, GR=1):
+    def ARD_DetectionLimitStab(self, NlocalCPU=1, integration_time=None, dt=None, Nphases=3, min_dist=3, max_dist=5, Noutputs=20000, GR=1, relaunch=False):
         
         subP_means, M95 = ardf.Stat_DataDL(self.output_file_DL, nbins=15, percentage=95)
         D95 = pd.DataFrame({'period':subP_means,'mass':M95})
 
-        N = len(D95['period'])
-
         table_keplerian = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
+
+        grid_p = np.array(D95['period'])
+        for p in np.array(table_keplerian['period']): #thinner grid to explore around existing planets
+            if p<np.max(D95['period']):
+                ratio = np.linspace(0.75,1.0,6)-0.05
+                grid_p = np.hstack([grid_p,p*ratio])
+                grid_p = np.hstack([grid_p,p/ratio])
+        grid_p = np.sort(grid_p)
+        D95_interp = interp1d(np.array(D95['period']), np.array(D95['mass']), kind='linear', bounds_error=False, fill_value=0)(grid_p)
+
+        D95 = pd.DataFrame({'period':grid_p,'mass':D95_interp})
+        N = len(D95['period'])
 
         self.D95 = D95
         self.output_file_STDL1 = self.tag+"AllStabilityRates.dat"
         self.output_file_STDL2 = self.tag+"Final_DynamicalDetectLim.dat"
+
+        if relaunch:
+            os.system('rm '+self.output_file_STDL1)
+            os.system('rm '+self.output_file_STDL2)
 
         if os.path.exists(self.output_file_STDL1):
             print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(self.output_file_STDL1))
@@ -327,15 +406,24 @@ class ARD_tableXY(object):
             fig = plt.figure(figsize=(5,4))
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
-        plt.plot(self.D95['period'], self.D95['mass'], color='xkcd:mahogany', lw=3.0, zorder=2, label=r'\large{w/o stability}')
-        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=3.0, zorder=10, label=r'\large{w stability}')
+        plt.plot(self.D95['period'], self.D95['mass'], color='k', marker='.', lw=1.5, zorder=2, label=r'\large{w/o stability}')
+        plt.plot(P, M_stb, ls='-', color='red', marker='.', lw=1.5, zorder=10, label=r'\large{w stability}')
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
+
+        planets = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
+        planets = planets.loc[(planets['period']>np.min(P))&(planets['period']<np.max(P))]
+        variable = np.array(planets['mass'])
+        variable[variable>1.05*np.max(self.D95['mass'])] = np.max(self.D95['mass'])
+        plt.scatter(planets['period'],variable,color='k',marker='^',s=20,zorder=9)
+        plt.scatter(planets['period'],planets['mass'],color='k',marker='*',s=50,zorder=10)
+
         plt.xlabel(r'\Large{Period [d]}')
         plt.ylabel(r'\Large{Mass [M$_{\oplus}$]}')
         plt.tick_params(labelsize=12)
         plt.legend(loc='upper left')
         plt.tight_layout()
+        plt.ylim(0,np.max(self.D95['mass'])+1)
         plt.savefig(self.tag+'FinalDetectionLimits.png', format='png', dpi = 300)
 
 

@@ -142,7 +142,10 @@ def Stat_DataDL(output_file, percentage=95, nbins=20, axis_y_var='M'):
     for p1,p2 in zip(bins[0:-1],bins[1:]):
         selection = (P>=p1)&(P<=p2)
         subP_means.append(np.mean(P[selection]))
-        params = fit_erf(M[selection],detect_rate[selection])
+        try:
+            params = fit_erf(M[selection],detect_rate[selection])
+        except:
+            params = [1,np.max(M[selection])]
         model = erf_function(grid,params[0],params[1])
         M95.append(grid[np.argmin(abs(model-percentage/100))])
 
@@ -532,7 +535,7 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
 
     Nplanets = len(table_keplerian)
 
-    NAFF_Thresh = int(NAFF_Thresh)
+    NAFF_Thresh = float(NAFF_Thresh)
     GR = int(GR)
 
     # ---------- Extract the period and mass of the injected planet, according to the data-driven detection limits. Then convert P to a.
@@ -542,13 +545,15 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
 
     test_particle = np.array([P_inject[shift],0,0,0,0,0,0,90,M_lim100[shift],a_lim100[shift]])
     table_keplerian.loc[len(table_keplerian)] = test_particle
-    index0 = np.argsort(table_keplerian['period'].values)[-1]
+    index0 = np.where(np.sort(table_keplerian['period'].values)==table_keplerian['period'].values[-1])[0][0]
     table_keplerian = table_keplerian.sort_values(by='period') # ---------- Sort the parameters by increasing a
     
     if dt is None:
         dt = np.min(table_keplerian['period'])/365.25/40
     if T is None:
-        T = 10*np.max(table_keplerian['period'])/365.25
+        T = 1000*np.max(table_keplerian['period'])/365.25
+    print(' [INFO] Integration time = %.0f [kyr] & Delta time step = %.2f [days]'%(T/1000,dt*365.25))
+
     dt = dt*2*np.pi
 
     P = np.array(table_keplerian['period'])/365                # [years]
@@ -571,44 +576,63 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     P_inject = P_inject/365.25
 
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
-    print(' [INFO] Processing stability estimation at period bin ' + str(shift+1))
+    print('\n [INFO] Processing stability estimation at period bin %.0f / %.0f'%(shift+1,len(D95['period'])))
+    
+    stab_rate = AnalyticStability(Mstar, a, e, M)
+    crossing = OrbitCrossing(a, e)
     stab = 0.
-    for j in range(Nphases):
-        #print(" [INFO] Phase tested : %.0f / %.0f"%(j+1,Nphases))
-        phase[index0] = phases_inject[j]
-        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+    if stab_rate == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we perform the numerical simulations to precise the system stability
+        if crossing==0:
+            stab_rate = 0. # If orbits are crossing, for sure the system is unstable. No need of numerical simulations.
+        else:
+            for j in range(Nphases):
+                #print(" [INFO] Phase tested : %.0f / %.0f"%(j+1,Nphases))
+                phase[index0] = phases_inject[j]
+                stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
 
-    stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
+            stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
+    else:
+        stab_rate = 100.
+    
     file = open(output_file, 'a')
     file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+
     file.close()
 
-    print('P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], OrbitCrossing(a, e), AnalyticStability(Mstar, a, e, M)))
+    print(' [INFO] P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], crossing, stab_rate/100))
 
-    if stab_rate <= 0.1: # If the rate of stability is smaller than 0.1%
+    M_lim100[shift] = M_lim100[shift]*mE_S
+
+    iteration=0
+    if (stab_rate <= 0.1): # If the rate of stability is smaller than 0.1%
         Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])
         dM = 1000000.
         q = int(0)
         while dM > Thresh:
-            print(" [INFO] Processing period number = %.0f"%(shift+1))
+            iteration+=1
             if q == 0 and M_lim100[shift] > 0.001*mE_S:
                 M[index0] = 0.001*mE_S
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
-                stab = 0.
-                for j in range(Nphases):
-                    phase[index0] = phases_inject[j]
-                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+                print(" [INFO] Processing period number = %.0f (iteration=%.0f -> M=%.2f)"%(shift+1,iteration,M[index0]/mE_S))
 
-                stab_rate = round((stab / Nphases) * 100.)
+                crossing = OrbitCrossing(a, e)
+                if crossing==1:
+                    stab_rate = 0. 
+                else:
+                    stab = 0.
+                    for j in range(Nphases):
+                        phase[index0] = phases_inject[j]
+                        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
+
+                    stab_rate = round((stab / Nphases) * 100.)
                 file = open(output_file, 'a')
-                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S*(1-crossing)) + ' ' + str(stab_rate) + '\n')
                 file.close()
 
                 if stab_rate > 0.1:
                     M_max = M_lim100[shift]
                     M_min = 0.001*mE_S
                     dM = M_max - M_min
-
                 else:
                     dM = 0. # Get out of the loop
                     Mlim = M[index0]
@@ -620,14 +644,17 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
             else:
                 M[index0] = (M_max+M_min) / 2.
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
-                stab = 0.
-                for j in range(Nphases):
-                    phase[index0] = phases_inject[j]
-                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR)
-
-                stab_rate = round((stab / Nphases) * 100.)
+                crossing = OrbitCrossing(a, e)
+                if crossing==1:
+                    stab_rate = 0. 
+                else:
+                    stab = 0.
+                    for j in range(Nphases):
+                        phase[index0] = phases_inject[j]
+                        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR)
+                    stab_rate = round((stab / Nphases) * 100.)
                 file = open(output_file, 'a')
-                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S*(1-crossing)) + ' ' + str(stab_rate) + '\n')
                 file.close()
 
                 if stab_rate > 0.1:
@@ -642,10 +669,10 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
             q += 1
 
         file = open(DetectLim0File, 'a')
-        file.write(str(P_inject[shift]*365.25) + ' ' + str(Mlim/mE_S) + ' ' + str(stab_rate) + '\n')
+        file.write(str(P_inject[shift]*365.25) + ' ' + str(Mlim/mE_S*(1-crossing)) + ' ' + str(stab_rate) + '\n')
         file.close()
 
     else:
         file = open(DetectLim0File, 'a')
-        file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
+        file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S*(1-crossing)) + ' ' + str(stab_rate) + '\n')
         file.close()

@@ -26,9 +26,11 @@ vec.ARD_DetectionLimitStab(
     min_dist = 3, 
     max_dist = 5, 
     Noutputs = 20000, 
+    relaunch = True,
     GR=1)
 
 vec.ARD_Plot_StabDL()
+vec.ARD_FinalPlot()
 
 
 #YARARA
@@ -69,7 +71,9 @@ if False:
         min_dist = 3, 
         max_dist = 5, 
         Noutputs = 20000, 
+        relaunch=True,
         GR=1)
 
     vec.ARD_Plot_StabDL()
+    vec.ARD_FinalPlot()
 
