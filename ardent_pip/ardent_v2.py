@@ -35,7 +35,7 @@ class ARD_tableXY(object):
     def ARD_Plot(self,new=True):
         if new:
             fig = plt.figure(figsize=(5,4))
-        plt.errorbar(self.x,self.y,yerr=self.yerr,color='k',capsize=0,marker='o',ls='')
+        plt.errorbar(self.x,self.y,yerr=self.yerr,color='k',capsize=0,marker='o',ls='', alpha=0.3)
 
     def ARD_ResetPlanets(self):
         self.planets = []
@@ -131,8 +131,8 @@ class ARD_tableXY(object):
         plt.xlabel('X [AU]')
         plt.ylabel('Y [AU]')
 
-        hz_inf = np.polyval(np.array([-0.47739653,  0.08719618,  2.92658674, -2.58897268,  1.11537673, -0.06598796]),self.mstar)
-        hz_sup = np.polyval(np.array([ 1.15443229, -6.7284057 , 12.93412033, -8.26643736,  2.72788611,-0.15849661]),self.mstar)
+        hz_inf = np.polyval(np.array([-0.47739653,  0.08719618,  2.92658674, -2.58897268,  1.11537673, -0.06598796]),self.mstar) # From Kopparapu(2013)
+        hz_sup = np.polyval(np.array([ 1.15443229, -6.7284057 , 12.93412033, -8.26643736,  2.72788611,-0.15849661]),self.mstar) # From Kopparapu(2013)
         
         hmax = [hz_sup*np.cos(phases2),hz_sup*np.sin(phases2)]
         hmin = [hz_inf*np.cos(phases2),hz_inf*np.sin(phases2)]
@@ -155,8 +155,9 @@ class ARD_tableXY(object):
         rms = np.std(self.y)
         print(' [INFO] RMS of the RV vector = %.2f m/s'%(rms))
 
-        Kmax = rms*1.00
-        rangeK = [0.10,np.round(Kmax,2)]
+        Kmax = rms*1.20
+        Kmin = 0.1*rms
+        rangeK = [np.round(Kmin,2),np.round(Kmax,2)]
         print(' [INFO] Grid of semi-amplitude between :',rangeK)
 
         #first iteration with poor sampling
@@ -204,7 +205,7 @@ class ARD_tableXY(object):
         plt.subplots_adjust(left=0.13,right=0.95,hspace=0.25,top=0.97,bottom=0.07)
 
 
-    def ARD_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.3], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
+    def ARD_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.2], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
         
         if rvFile is None:
             rvFile = {'jdb':self.x,'rv':self.y,'rv_err':self.yerr}
