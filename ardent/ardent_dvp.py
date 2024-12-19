@@ -522,7 +522,7 @@ def OrbitCrossing(a, e):
         peri_outer = a[i+1] * (1-e[i+1])
         if apo_inner >= peri_outer:
             orb_cross = True
-            
+    
     return orb_cross
 
 

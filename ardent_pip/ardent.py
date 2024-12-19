@@ -10,6 +10,7 @@ import pandas as pd
 from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
+from scipy.interpolate import interp1d
 
 NlocalCPU = int(3) # The number of CPUs allocated to compute the dynamical detection limits, to fasten the computation.
     # If NlocalCPU is set to 0, the program will be compatible with external cluster.
@@ -95,11 +96,55 @@ class ARD_tableXY(object):
         print('\n [INFO] Table updated: \n')
         print(printed_table)
 
+    def ARD_PlotPlanets(self, new=True):
+        table = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
+        phases = np.linspace(0,2*np.pi,1000)
+        phases2 = np.linspace(0,np.pi,1000)
+        
+        a = np.array(table['semimajor'])
+        b = np.array(table['semimajor'])*np.sqrt(1-np.array(table['ecc'])**2)
+        c = np.sqrt(a**2-b**2)
+
+        x = np.cos(phases)*a[:,np.newaxis] +c[:,np.newaxis]     
+        y = np.sin(phases)*b[:,np.newaxis] 
+
+        if new:
+            plt.figure(figsize=(7,7))
+        plt.axis('equal')
+
+        plt.scatter([0],[0],color='k',marker='x',label=r'%.2f $M_{\odot}$'%(self.mstar))
+        for xi,yi,wi,mi in zip(x,y,np.array(table['periastron']),np.array(table['mass'])):
+            X = np.array([xi,yi])
+            R = np.array([[np.cos(np.pi/180*wi),-np.sin(np.pi/180*wi)],[np.sin(np.pi/180*wi),np.cos(np.pi/180*wi)]])
+            X = np.dot(X.T,R).T
+            if mi<50:
+                plt.plot(X[0],X[1],label=r'%.1f $M_{\oplus}$'%(mi))
+            else:
+                plt.plot(X[0],X[1],label=r'%.2f $M_{Jup}$'%(mi/318))
+        
+        plt.plot(np.sin(phases),np.cos(phases),color='k',ls='-.',lw=1)
+        plt.axhline(y=0,color='k',ls=':',lw=1,alpha=0.2)
+        plt.axvline(x=0,color='k',ls=':',lw=1,alpha=0.2)
+        plt.legend()
+        plt.xlabel('X [AU]')
+        plt.ylabel('Y [AU]')
+
+        hz_inf = np.polyval(np.array([-0.47739653,  0.08719618,  2.92658674, -2.58897268,  1.11537673, -0.06598796]),self.mstar)
+        hz_sup = np.polyval(np.array([ 1.15443229, -6.7284057 , 12.93412033, -8.26643736,  2.72788611,-0.15849661]),self.mstar)
+        
+        hmax = [hz_sup*np.cos(phases2),hz_sup*np.sin(phases2)]
+        hmin = [hz_inf*np.cos(phases2),hz_inf*np.sin(phases2)]
+
+        hmin[1] = interp1d(hmin[0], hmin[1], kind='linear', bounds_error=False, fill_value=0)(hmax[0])
+
+        plt.fill_between(hmax[0],hmin[1],hmax[1],alpha=0.1,color='g')
+        plt.fill_between(hmax[0],-hmin[1],-hmax[1],alpha=0.1,color='g')
+
 
     def ARD_DetectionLimitRV_auto(self, rangeP=None, fap_level=0.01):
         
         if rangeP is None:
-            rangeP = [2,200]
+            rangeP = [2,600]
 
         
         print('\n [INFO] First iteration with low resolution')
@@ -154,17 +199,17 @@ class ARD_tableXY(object):
         self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='M', new=False) #axis_y_var='K'
         plt.subplot(2,1,2)
         self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='K', new=False) #axis_y_var='K'
-        plt.subplots_adjust(left=0.12,right=0.95,hspace=0.25,top=0.95,bottom=0.08)
+        plt.subplots_adjust(left=0.13,right=0.95,hspace=0.25,top=0.97,bottom=0.07)
 
 
-    def ARD_DetectionLimitRV(self, rangeP=[2., 200.], rangeK=[0.1, 1.3], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
+    def ARD_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.3], fap_level=0.01, Nsamples=500, Nphases=4, rvFile=None):
         
         if rvFile is None:
             rvFile = {'jdb':self.x,'rv':self.y,'rv_err':self.yerr}
         Mstar = self.mstar
         output_dir = self.output_dir
 
-        output_file = self.tag+'Data-driven_95MassLimits_P%.0f_%.0f_K%.1f_%.1f_F%.0f.p'%(rangeP[0],rangeP[1],rangeK[0],rangeK[1],fap_level*100)
+        output_file = self.tag+'Data-driven_MassLimits_P%.0f_%.0f_K%.1f_%.1f_F%.0f.p'%(rangeP[0],rangeP[1],rangeK[0],rangeK[1],fap_level*100)
         self.output_file_DL = output_file
 
         if not os.path.exists(output_file):
@@ -244,21 +289,22 @@ class ARD_tableXY(object):
 
         table_keplerian = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
 
+        self.D95 = D95
         self.output_file_STDL1 = self.tag+"AllStabilityRates.dat"
         self.output_file_STDL2 = self.tag+"Final_DynamicalDetectLim.dat"
 
         if os.path.exists(self.output_file_STDL1):
-            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(output_file))
+            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(self.output_file_STDL1))
         else:        
             if NlocalCPU == 0: #cluster
                 shift = int(sys.argv[1])
                 ardf.DynDL(shift, table_keplerian, D95, self.tag, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR)
                 
             elif NlocalCPU > 0: #MCp
-                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, table_keplerian, D95, self.output_dir, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR) for shift in range(N))
+                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, table_keplerian, D95, self.tag, T=integration_time, dt=dt, Nphases=Nphases, min_dist=min_dist, max_dist=max_dist, Noutputs=Noutputs, GR=GR) for shift in range(N))
 
 
-    def ARD_Plot_StabDL(self, data_driven='Data-driven_95MassLimits.dat', stability_driven='Final_DynamicalDetectLim.dat',new=True):
+    def ARD_Plot_StabDL(self, new=True):
         """
         Plot the detection limits, both data-driven limits and dynamical detection limits.
         
@@ -272,7 +318,6 @@ class ARD_tableXY(object):
 
         P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
         M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
-        M_data = np.genfromtxt(self.output_file_DL, usecols=(1), skip_header=int(2))
 
         indexes = np.argsort(P)
         P = np.array(P)[indexes]
@@ -282,7 +327,7 @@ class ARD_tableXY(object):
             fig = plt.figure(figsize=(5,4))
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
-        plt.plot(P, M_data, color='xkcd:mahogany', lw=3.0, zorder=2, label=r'\large{w/o stability}')
+        plt.plot(self.D95['period'], self.D95['mass'], color='xkcd:mahogany', lw=3.0, zorder=2, label=r'\large{w/o stability}')
         plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=3.0, zorder=10, label=r'\large{w stability}')
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
@@ -291,7 +336,7 @@ class ARD_tableXY(object):
         plt.tick_params(labelsize=12)
         plt.legend(loc='upper left')
         plt.tight_layout()
-        plt.savefig('FinalDetectionLimits_'+sys_name+'.png', format='png', dpi = 300)
+        plt.savefig(self.tag+'FinalDetectionLimits.png', format='png', dpi = 300)
 
 
 

@@ -15,6 +15,8 @@ from tqdm import tqdm
 
 # ---------- Define constants
 
+Gconst = 6.6743*10**(-11) # The universal gravitation constant, in units of m^3/(kg*s^2)  ;  Value from CODATA 2018
+
 mE_S = 3.986004e14 / 1.3271244e20 # Earth-to-Solar mass ratio
 mJ_S = 1.2668653e17 / 1.3271244e20 # Jupiter-to-Solar mass ratio
 
@@ -289,6 +291,94 @@ def HillRad(a, Mp, Mstar):
     
     return r_H
 
+################### ANALYTIC STABILITY CRITERION
+def AnalyticStability(Mstar, a, e, M):
+    """
+    Analytic estimation of orbital stability following the AMD framework (Laskar & Petit 2017). This function combines the Hill AMD stability criterion of Petit & Laskar (2018) with the AMD criterion in presence of first-order mean-motion resonances (MMR) of Petit & Laskar (2017).
+    
+    Arguments
+    ---------
+    Mstar (float): the stellar mass [M_Sun]
+    a, e, M (1D arrays): the semi-major axis [AU], orbital eccentricity, and mass [M_Sun] of all the planets in the modelled system.
+    
+    Output
+    ------
+    analytic_stab (int): indicator of orbital stability. 1: AMD-stable ; 0: AMD-unstable, indicating that further numerical investigations are needed.
+    """
+    NB_pairs = len(a) - 1
+    # ---------- Define G
+    ### Convert G in units of AU, Solar mass and year
+    G = Gconst * 1.9884*10**30 # Converting kg in solar mass
+    G = G / (149597870700**3) # Converting meters in AU
+    G = G * 31557600**2 # Converting seconds in years
+        
+    alpha = np.zeros(NB_pairs)
+    gamma = np.zeros(NB_pairs)
+    epsilon = np.zeros(NB_pairs)
+    for i in range(NB_pairs):
+        alpha[i] = a[i] / a[i+1]
+        gamma[i] = M[i] / M[i+1]
+        epsilon[i] = (M[i]+M[i+1]) / Mstar
+    
+    # ---------- Computation of AMD for each planet pair
+    Lambda_ext = M * np.sqrt(G*Mstar*a)  # The Lambda coordinate of the Poincare canonical heliocentric reference frame, applied to the outer body of the considered pair.
+    C = np.zeros(NB_pairs) # The total angular momentum of each pair.
+    AMD = np.zeros(NB_pairs) # The AMD of each pair
+    
+    for i in range(NB_pairs):
+        C[i] = Lambda_ext[i]*(1-np.sqrt(1-e[i]**2)) + Lambda_ext[i+1]*(1-np.sqrt(1-e[i+1]**2))
+        AMD[i] = C[i] / Lambda_ext[i+1]
+    
+    # ---------- Selection and computation of the critical AMD
+    analytic_stab = 1 # binary number saying if the system is analytically stable (1) or unstable (0)
+    
+    for i in range(NB_pairs):
+        alpha_cir = 1 - (1.46*epsilon[i]**(2./7.))
+        alpha_R = 1 - 1.5*epsilon[i]**(1./4.) - 0.316*epsilon[i]**(0.5)
+        
+        if alpha[i] < alpha_cir and alpha[i] < alpha_R: # Hill
+            Cc_H = gamma[i] * alpha[i]**0.5 + 1 - (1+gamma[i])**1.5 * np.sqrt(alpha[i]/(gamma[i]+alpha[i]) * (1+3**(4./3.)*epsilon[i]**(2./3.)*gamma[i]/((1+gamma[i])**2)))
+            beta = AMD[i] / Cc_H
+            if beta >= 1.:
+                analytic_stab = 0
+            
+        elif alpha[i] < alpha_cir and alpha[i] >= alpha_R: # MMR
+            r = 0.80199
+            g = 3**4 * (1-alpha[i])**5 / (2**9 * r * epsilon[i]) - 32*r*epsilon[i] / (9*(1-alpha[i])**2)
+            Cc_MMR = (gamma[i] / (1+gamma[i])) * g**2 / 2.
+            beta = AMD[i] / Cc_MMR
+            if beta >= 1.:
+                analytic_stab = 0
+            
+        elif alpha[i] >= alpha_cir:
+            analytic_stab = 0
+    
+    return analytic_stab
+
+################### ORBIT CROSSING
+def OrbitCrossing(a, e):
+    """
+    Function checking if the osculating orbits of any consecutive planet pair cross in a planetary system. Returns True if the orbits of any consecutive planet pair cross. Returns False if none of the planet pairs has crossing orbits.
+    
+    Arguments
+    ---------
+    a, e (1D array): the semi-major axis (any unit) and orbital eccentricity of all the planets in the system.
+    
+    Output
+    ------
+    orb_cross (bool): True if the orbits of at least one planet pair cross. False otherwise.
+    """
+    orb_cross = 0
+    NB_pairs = len(a) - 1
+    for i in range(NB_pairs):
+        apo_inner = a[i] * (1+e[i])
+        peri_outer = a[i+1] * (1-e[i+1])
+        if apo_inner >= peri_outer:
+            orb_cross = 1
+    
+    return orb_cross
+
+
 ################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
 def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=1):
     """Function for the dynamical evolution followed with stability estimation of the orbits.
@@ -407,7 +497,7 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs
 #############################
 ################### MAIN CODE
 #def DynDL(shift, Nplanets, param_file, DataDrivenLimitsFile, output_file, DetectLim0File):
-def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=1.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=True, GR=True):
+def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=True, GR=True):
     """
     Computation of the dynamical detection limits
     
@@ -423,6 +513,7 @@ def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     
     output_file = output_dir+"AllStabilityRates.dat"
     DetectLim0File = output_dir+"Final_DynamicalDetectLim.dat"
+
     # --- If this is the first call to this function, create the output files
     if shift == int(0):
         file = open(output_file, 'a')
@@ -437,6 +528,8 @@ def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     
     # ---------- Get the parameters
 
+    table_keplerian = keplerian_table.copy()
+
     Nplanets = len(table_keplerian)
 
     NAFF_Thresh = int(NAFF_Thresh)
@@ -444,7 +537,7 @@ def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, m
 
     # ---------- Extract the period and mass of the injected planet, according to the data-driven detection limits. Then convert P to a.
     P_inject = np.array(D95['period'])
-    M_lim100 = np.array(D95['mass']) 
+    M_lim100 = np.array(D95['mass'])
     a_lim100 = (P_inject/365.25)**(2./3.) * ((Mstar*Mass_sun + M_lim100* Mass_earth)/(Mass_sun+Mass_earth))**(1./3.)
 
     test_particle = np.array([P_inject[shift],0,0,0,0,0,0,90,M_lim100[shift],a_lim100[shift]])
@@ -453,12 +546,10 @@ def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     table_keplerian = table_keplerian.sort_values(by='period') # ---------- Sort the parameters by increasing a
     
     if dt is None:
-        dt = np.min(table_keplerian['period'])/365.25/50
+        dt = np.min(table_keplerian['period'])/365.25/40
     if T is None:
-        T = 100000*np.max(table_keplerian['period'])/365.25
+        T = 10*np.max(table_keplerian['period'])/365.25
     dt = dt*2*np.pi
-
-    #index0
 
     P = np.array(table_keplerian['period'])/365                # [years]
     K = np.array(table_keplerian['semi-amp'])
@@ -491,6 +582,8 @@ def DynDL(shift, table_keplerian, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     file = open(output_file, 'a')
     file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
     file.close()
+
+    print('P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], OrbitCrossing(a, e), AnalyticStability(Mstar, a, e, M)))
 
     if stab_rate <= 0.1: # If the rate of stability is smaller than 0.1%
         Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])

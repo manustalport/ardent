@@ -16,6 +16,7 @@ vec.ARD_Set_output_dir(output_directory)
 
 #vec.ARD_AddPlanets(p=0.7195, k=3.638, e=0.00, omega=0.0, asc_node = 0.0, mean_long=147, inc=90.0) #set the planets
 vec.ARD_AddPlanets(p=873.1, k=196.1, e=0.85, omega=42.0, asc_node = 0.0, mean_long=5, inc=90.0) #set the planets
+vec.ARD_PlotPlanets(new=True)
 
 vec.ARD_DetectionLimitRV_auto(fap_level=0.01)
 
@@ -27,7 +28,7 @@ vec.ARD_DetectionLimitStab(
     Noutputs = 20000, 
     GR=1)
 
-vec.ARD_Plot_StabDL(nbins=10, percentage=95, axis_y_var='Mass')
+vec.ARD_Plot_StabDL()
 
 
 #YARARA
@@ -36,7 +37,7 @@ if False:
 
     import ardent as ard
     
-    star = 'HD48948'
+    star = 'TOI2134'
     ins = 'HARPN'
     root = '/Users/cretignier/Documents/Yarara/'+star+'/data/s1d/'+ins
     output_directory = root+'/DETECTION_LIMIT/'
@@ -56,6 +57,7 @@ if False:
     for line in keplerian.index:
         p, k, e, omega, mean_long = keplerian.loc[line][['p','k','e','peri','long']].astype('float')
         vec.ARD_AddPlanets(p=p, k=k, e=e, omega=omega, asc_node = 0.0, mean_long=mean_long, inc=90.0) #set the planets
+    vec.ARD_PlotPlanets(new=True)
 
     vec.ARD_DetectionLimitRV_auto(fap_level=0.01) 
 
@@ -69,5 +71,5 @@ if False:
         Noutputs = 20000, 
         GR=1)
 
-    vec.ARD_Plot_StabDL(nbins=10, percentage=95, axis_y_var='Mass')
+    vec.ARD_Plot_StabDL()
 
