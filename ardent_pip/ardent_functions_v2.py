@@ -382,7 +382,7 @@ def OrbitCrossing(a, e):
 
 
 ################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
-def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=1):
+def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=False):
     """
     Function for the dynamical evolution followed with stability estimation of the orbits.
     KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, lam, ecc, w, inc, Omega, Mass] where
@@ -430,13 +430,13 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs
             q += 1
       
     sim.move_to_com()
-    sim.dt = dt
+    sim.dt = dt * 2*np.pi # Conversion to rebound units: 1yr = 2pi
     sim.integrator = "ias15" # REMARQUE: integrateur non symplectique utilise par soucis de generalite avec l'etude dynamique: on veut pouvoir etendre l'etude aux systemes binaires.
 
     sim.exit_max_distance = max_dist
     sim.exit_min_distance = min_dist
     
-    if GR == 1:
+    if GR == True:
         ##*************** REBOUNDX PART *****************
         rebx = reboundx.Extras(sim)
         gr = rebx.load_force("gr")
@@ -445,7 +445,7 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs
         ##************************************************
         eilambda = np.zeros((Nbodies, Noutputs))
         time = np.zeros(Noutputs)
-    elif GR == 0:
+    elif GR == False:
         eilambda = np.zeros((Nbodies, Noutputs))
         time = np.zeros(Noutputs)
 
@@ -501,7 +501,7 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs
 #############################
 ################### MAIN CODE
 #def DynDL(shift, Nplanets, param_file, DataDrivenLimitsFile, output_file, DetectLim0File):
-def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=True, GR=True):
+def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, min_dist=1.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=0., GR=False):
     """
     Computation of the dynamical detection limits
     
@@ -534,8 +534,8 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     table_keplerian = keplerian_table.copy()
     Nplanets = len(table_keplerian)
 
-    # REMOVE THIS LINE. NAFF_Thresh = int(NAFF_Thresh)
-    GR = int(GR)
+    # NAFF_Thresh = int(NAFF_Thresh) --- REMOVE THIS LINE. 
+    # GR = int(GR) --- Line removed because now I enter GR as a bool, not as an int of 0 or 1 (modification made in Stability too).  
 
     # ---------- Extract the period and mass of the injected planet, according to the data-driven detection limits. Then convert P to a.
     P_inject = np.array(D95['period']) / 365.25 # [yr]
@@ -548,10 +548,10 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     table_keplerian = table_keplerian.sort_values(by='semimajor') # ---------- Sort the parameters by increasing a
     
     if dt is None:
-        dt = np.min(table_keplerian['period'])/365.25/40
+        dt = np.min(table_keplerian['period'])/365.25/40 # By default, Pb/40 in [yr]
     if T is None:
-        T = 80000*np.max(table_keplerian['period'])/365.25
-    dt = dt*2*np.pi
+        T = 80000*np.max(table_keplerian['period'])/365.25 # [yr]
+    # dt = dt*2*np.pi --- I moved this line into Stability, given that it is a rebound-specific feature. 
 
     P = np.array(table_keplerian['period'])/365.25               # [years]
     K = np.array(table_keplerian['semi-amp'])
@@ -565,12 +565,12 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     ML = True
     
     params = [a,phase,e,w,inc,O,M] # Keep the order of the elements! a,lam,e,w,inc,O,M
-    phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, I generate Nphases points with constant interval in [start, stop[ (the last value is excluded)
+    phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, it generates Nphases points with constant interval in [start, stop[ (the last value is excluded)
     
     min_dist = min_dist * HillRad(a[0], M[0], Mstar)
     max_dist = max_dist * a[-1]
 
-    P_inject = P_inject/365.25
+    # P_inject = P_inject/365.25 --- Made this conversion when I initialise P_inject -> Remove this line
 
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
     print(' [INFO] Processing stability estimation at period bin ' + str(shift+1))
@@ -585,14 +585,13 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
     file.close()
 
-    print('P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], OrbitCrossing(a, e), AnalyticStability(Mstar, a, e, M)))
+    #print('P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], OrbitCrossing(a, e), AnalyticStability(Mstar, a, e, M)))
 
     if stab_rate <= 0.1: # If the rate of stability is smaller than 0.1%
         Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])
         dM = 1000000.
         q = int(0)
         while dM > Thresh:
-            print(" [INFO] Processing period number = %.0f"%(shift+1))
             if q == 0 and M_lim100[shift] > 0.001*mE_S:
                 M[index0] = 0.001*mE_S
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
