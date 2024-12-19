@@ -3,7 +3,7 @@ import os
 import pickle
 import sys
 
-import ardent_functions as ardf
+import ardent_functions_v2 as ardf
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from scipy.interpolate import interp1d
 NlocalCPU = int(3) # The number of CPUs allocated to compute the dynamical detection limits, to fasten the computation.
     # If NlocalCPU is set to 0, the program will be compatible with external cluster.
     # To use the code on a cluster, import all the needed files in the execution folder. Create a virtual environement to install rebound and reboundx.
-    # Use the argument --array of sbatch to call the programme for each value of P_inject
+    # Use the argument --array of sbatch to call the programme for all values of P_inject 
 
 class ARD_tableXY(object):
     def __init__(self, x, y, yerr, ):
