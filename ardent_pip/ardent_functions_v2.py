@@ -19,6 +19,7 @@ Gconst = 6.6743*10**(-11) # The universal gravitation constant, in units of m^3/
 
 mE_S = 3.986004e14 / 1.3271244e20 # Earth-to-Solar mass ratio
 mJ_S = 1.2668653e17 / 1.3271244e20 # Jupiter-to-Solar mass ratio
+mE_J = 3.986004e14 / 1.2668653e17 # Earth-to-Jupiter mass ratio
 
 Mass_sun = 1.988475e30
 Mass_earth = Mass_sun*mE_S
@@ -92,7 +93,7 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, Nsamples=int(2000), Nphas
     P = np.array([10**(uniform(np.log10(Pmin), np.log10(Pmax))) for i in range(Nsamples)])
     K = np.array([uniform(Kmin, Kmax) for i in range(Nsamples)])
     M = (K/28.435) * Mstar**(2./3.) * (P/365.25)**(1./3.) # [M_Jup]
-    M = M * Mass_jupiter / Mass_earth # [M_Earth]
+    M = M / mE_J # [M_Earth]
 
     for i in tqdm(range(Nsamples)):
         detect = int(0)
@@ -282,11 +283,12 @@ def _naf_secant(f, a0, b0, xtol, relftol, Nmax):
   
 ################### HILL RADIUS
 def HillRad(a, Mp, Mstar):
-    """Hill radius [AU]:
+    """
+    Hill radius [AU]:
     r_H = a * (m1/(3*m0))**(1./3.)
-    , where the indexes 0, 1 refer to the star, and planet"""
-
-    mE_S = 3.986004e14 / 1.3271244e20
+    , where the indexes 0, 1 refer to the star, and planet
+    """
+    #mE_S = 3.986004e14 / 1.3271244e20
     r_H = a * (Mp/(3*Mstar))**(1./3.)
     
     return r_H
@@ -381,7 +383,8 @@ def OrbitCrossing(a, e):
 
 ################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
 def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=1):
-    """Function for the dynamical evolution followed with stability estimation of the orbits.
+    """
+    Function for the dynamical evolution followed with stability estimation of the orbits.
     KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, lam, ecc, w, inc, Omega, Mass] where
         a is semi-major axis [AU]
         lam is mean longitude [rad]
@@ -396,7 +399,8 @@ def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs
     dt: rebound integration timestep
     min_dist and max_dist: The minimum and maximum allowed distances, respectively. The former serves as close encounter criterion, the latter as escape criterion.
     Noutputs: the number of output times desired to compute the orbital stability. Default is 20000.
-    NAFF_Thresh: The NAFF threshold above which the system is considered unstable. Default is 0. """
+    NAFF_Thresh: The NAFF threshold above which the system is considered unstable. Default is 0. 
+    """
     Nbodies = int(Nplanets + 1) # The total number of bodies excluding the star, i.e. Nplanets + 1 injected planet
     
     a = KepParam[0]
@@ -527,31 +531,29 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
         file0.close()
     
     # ---------- Get the parameters
-
     table_keplerian = keplerian_table.copy()
-
     Nplanets = len(table_keplerian)
 
-    NAFF_Thresh = int(NAFF_Thresh)
+    # REMOVE THIS LINE. NAFF_Thresh = int(NAFF_Thresh)
     GR = int(GR)
 
     # ---------- Extract the period and mass of the injected planet, according to the data-driven detection limits. Then convert P to a.
-    P_inject = np.array(D95['period'])
-    M_lim100 = np.array(D95['mass'])
-    a_lim100 = (P_inject/365.25)**(2./3.) * ((Mstar*Mass_sun + M_lim100* Mass_earth)/(Mass_sun+Mass_earth))**(1./3.)
-
-    test_particle = np.array([P_inject[shift],0,0,0,0,0,0,90,M_lim100[shift],a_lim100[shift]])
+    P_inject = np.array(D95['period']) / 365.25 # [yr]
+    M_lim100 = np.array(D95['mass']) * mE_S # [M_Sun]
+    a_lim100 = (P_inject)**(2./3.) * ((Mstar+M_lim100)/(1.+mE_S))**(1./3.)
+    
+    test_particle = np.array([P_inject[shift]*365.25,0,0,0,0,0,0,90,M_lim100[shift]/mE_S,a_lim100[shift]])
     table_keplerian.loc[len(table_keplerian)] = test_particle
-    index0 = np.argsort(table_keplerian['period'].values)[-1]
-    table_keplerian = table_keplerian.sort_values(by='period') # ---------- Sort the parameters by increasing a
+    index0 = np.argsort(table_keplerian['semimajor'].values)[-1]
+    table_keplerian = table_keplerian.sort_values(by='semimajor') # ---------- Sort the parameters by increasing a
     
     if dt is None:
         dt = np.min(table_keplerian['period'])/365.25/40
     if T is None:
-        T = 10*np.max(table_keplerian['period'])/365.25
+        T = 80000*np.max(table_keplerian['period'])/365.25
     dt = dt*2*np.pi
 
-    P = np.array(table_keplerian['period'])/365                # [years]
+    P = np.array(table_keplerian['period'])/365.25               # [years]
     K = np.array(table_keplerian['semi-amp'])
     e = np.array(table_keplerian['ecc'])
     w = ang_rad(np.array(table_keplerian['periastron']))
