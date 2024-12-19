@@ -82,10 +82,11 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, Nsamples=int(2000), Nphas
 
     output_dir = os.path.dirname(output_file)+'/'
 
+    rms = np.std(rv)
     Pmin = rangeP[0]
     Pmax = rangeP[1]
-    Kmin = rangeK[0]
-    Kmax = rangeK[1]
+    Kmin = rangeK[0]*rms
+    Kmax = rangeK[1]*rms
     
     detect_rate = np.zeros(Nsamples)
     phase = np.linspace(-np.pi, np.pi, num=Nphases, endpoint=False)
