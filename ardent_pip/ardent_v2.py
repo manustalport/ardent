@@ -169,8 +169,8 @@ class ARD_tableXY(object):
 
         K75 = np.mean(K)
         print(' [INFO] K75 detected around %.2f'%(K75))
-        Kmin = np.round(K75-0.15*rms,2)
-        Kmax = np.round(K75+0.15*rms,2)
+        Kmin = np.round(K75-0.2*rms,2)
+        Kmax = np.round(K75+0.2*rms,2)
         if Kmin<0.10:
             Kmin = 0.10
         rangeK = [Kmin,Kmax]
