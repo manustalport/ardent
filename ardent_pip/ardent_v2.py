@@ -46,7 +46,7 @@ class ARD_tableXY(object):
         self.mstar = param_values[param_names=='Mstar'][0]
         conv = 180/np.pi
 
-        nb_planet = np.sum([p.split('_')[0]=='ML' for p in param_names])
+        nb_planet = np.sum([p.split('_')[0]=='P' for p in param_names])
         for i in np.arange(1,1+nb_planet):
             p = np.round(param_values[param_names=='P_%.0f'%(i)][0],3)
             k = np.round(param_values[param_names=='K_%.0f'%(i)][0],3)
@@ -72,15 +72,17 @@ class ARD_tableXY(object):
     def ARD_AddPlanets(self, p=365.25, k=0.10, e=0.0, omega=0.0, asc_node = 0.0, inc=90.0, mean_long=0.0, mean_anomaly=np.nan):
         """
         Either a mean_long or mean_anomaly parameters are needed
-        Args:
-            p : period
-            k : semi-amplitude
-            e : semi-amplitude
-            omega : periastron argument in degree
-            asc_node : longitude of the ascending node in degree
-            inc : inclination angle in degree
-            mean_long : mean longitude in degree
-            mean_anomaly : mean anomaly in degree
+        
+        Arguments
+        ---------
+            p : orbital period [days]
+            k : RV semi-amplitude [m/s]
+            e : orbital eccentricity
+            omega : argument of periastron [deg]
+            asc_node : longitude of the ascending node [deg]
+            inc : orbital inclination [deg]
+            mean_long : mean longitude [deg]
+            mean_anomaly : mean anomaly [deg]
         """
 
         mass,semi_axis = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
