@@ -70,7 +70,7 @@ class ARD_tableXY(object):
         self.starname = starname
         self.mstar = mass
 
-    def ARD_AddPlanets(self, p=365.25, k=0.10, e=0.0, omega=0.0, asc_node = 0.0, inc=90.0, mean_long=0.0, mean_anomaly=np.nan):
+    def ARD_AddPlanets(self, p=365.25, k=0.10, e=0.0, omega=0.0, asc_node = 0.0, inc=90.0, mean_long=0.0, mean_anomaly=np.nan, mass=np.nan, semi_major=np.nan):
         """
         Either a mean_long or mean_anomaly parameters are needed
         Args:
@@ -82,13 +82,22 @@ class ARD_tableXY(object):
             inc : inclination angle in degree
             mean_long : mean longitude in degree
             mean_anomaly : mean anomaly in degree
+            mass : planetary mass in Earth mass
+            semi_major : semi_major axis in AU
         """
 
-        mass,semi_axis = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
-        mass = np.round(mass,2)
-        semi_axis = np.round(semi_axis,3)
+        if (semi_major!=semi_major)|(mass!=mass):
+            mass_comp,semi_major_comp = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
+        
+        if mass!=mass:
+            mass = np.round(mass_comp,2)
+            print('\n [INFO] Mass calculated to be %.2f Earth mass'%(mass))
+        
+        if semi_major!=semi_major:
+            semi_major = np.round(semi_major_comp,3)
+            print('\n [INFO] Semi-major axis calculated to be %.2f AU'%(semi_major))
 
-        self.planets.append([p, k, e, omega, asc_node, mean_long, mean_anomaly, inc, mass, semi_axis])
+        self.planets.append([p, k, e, omega, asc_node, mean_long, mean_anomaly, inc, mass, semi_major])
         self.ARD_ShowPlanets()
 
     def ARD_ShowPlanets(self):
@@ -96,6 +105,7 @@ class ARD_tableXY(object):
         printed_table.index = ['planet %.0f'%(i) for i in range(1,1+len(self.planets))]
         print('\n [INFO] Table updated: \n')
         print(printed_table)
+        self.planets_table = printed_table.astype('float')
 
     def ARD_PlotPlanets(self, new=True, savefig=True, legend=True):
         table = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
@@ -151,7 +161,9 @@ class ARD_tableXY(object):
             plt.xlim(-xlim,xlim)
             plt.ylim(-xlim,xlim)
 
-    def ARD_Plot_MapUpperMass(self, x_au=1.25, detection_limit='RV'):
+    def ARD_Plot_MapUpperMass(self, x_au=1.25, detection_limit='RV', interp='cubic'):
+
+        mstar = self.mstar
 
         if detection_limit=='RV':        
             statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=10, axis_y_var='M')
@@ -160,18 +172,21 @@ class ARD_tableXY(object):
             M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
             statistic = [P,M_stb]
 
-        a = (statistic[0]/365.25)**(2./3.) * ((self.mstar*ardf.Mass_sun+statistic[1]*ardf.Mass_earth)/(ardf.Mass_sun+ardf.Mass_earth))**(1./3.)
+        a = (statistic[0]/365.25)**(2./3.) * ((mstar*ardf.Mass_sun+statistic[1]*ardf.Mass_earth)/(ardf.Mass_sun+ardf.Mass_earth))**(1./3.)
 
         grid = np.linspace(-x_au,x_au,1000)
         Gx,Gy = np.meshgrid(grid,grid)
         R = np.ravel(np.sqrt(Gx**2+Gy**2))
-        M = interp1d(a, statistic[1], kind='cubic', bounds_error=False, fill_value=np.nan)(R)
+        M = interp1d(a, statistic[1], kind=interp, bounds_error=False, fill_value=np.nan)(R)
         M = np.reshape(M,(1000,1000))
+
+
+
         plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=16,cmap='gnuplot')
         ax = plt.colorbar(pad=0)
         ax.ax.set_ylabel('95-percent Mass limit detection')
 
-    def ARD_FinalPlot(self):
+    def ARD_FinalPlot(self,interp='cubic'):
         
 
         fig = plt.figure(figsize=(14,7))
@@ -179,26 +194,26 @@ class ARD_tableXY(object):
 
         plt.subplot(1,2,1)
         self.ARD_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV')
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV',interp=interp)
 
         plt.subplot(1,2,2)
         self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab')
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab',interp=interp)
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
         plt.savefig(self.tag+'Summary_analysis.png', format='png', dpi = 300)
 
         fig = plt.figure(figsize=(14,7))
 
-        zoom = 1.25
+        zoom = 1.00
         plt.subplot(1,2,1)
         self.ARD_PlotPlanets(new=False,savefig=False,legend=False)
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV')
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV',interp=interp)
         plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
 
         plt.subplot(1,2,2)
         self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab')
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab',interp=interp)
         plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
@@ -228,10 +243,10 @@ class ARD_tableXY(object):
         statistic = ardf.Stat_DataDL(file1, percentage=75, nbins=6)
         K = 0.0891*statistic[1]*(statistic[0]/365.25)**(-1./3.)*(self.mstar)**(-2./3.) # K semi.amplitude
 
-        K75 = np.mean(K)
-        print(' [INFO] K75 detected around %.2f'%(K75))
-        Kmin = np.round(K75-0.15*rms,2)
-        Kmax = np.round(K75+0.15*rms,2)
+        K75 = np.median(K)
+        print(' [INFO] K75 detected around %.2f m/s'%(K75))
+        Kmin = np.round(K75-0.20*rms,2)
+        Kmax = np.round(K75+0.20*rms,2)
         if Kmin<0.10:
             Kmin = 0.10
         rangeK = [Kmin,Kmax]
@@ -262,7 +277,7 @@ class ARD_tableXY(object):
         plt.subplot(2,1,1)
         self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='M', new=False) #axis_y_var='K'
         plt.subplot(2,1,2)
-        self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='K', new=False) #axis_y_var='K'
+        self.ARD_Plot_DataDL(nbins=10, percentage=[95,75,50], axis_y_var='K', new=False, legend=False) #axis_y_var='K'
         plt.subplots_adjust(left=0.13,right=0.95,hspace=0.25,top=0.97,bottom=0.07)
         plt.savefig(output_file.replace('.p','.png'), format='png', dpi = 300)
 
@@ -280,18 +295,18 @@ class ARD_tableXY(object):
         if not os.path.exists(output_file):
             ardf.DataDL(output_file, rvFile, Mstar, rangeP, rangeK, Nsamples, Nphases, fap_level)
         else:
-            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(output_file))
+            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s \n'%(output_file))
         
         self.ARD_Plot_DataDL(output_file, percentage=[95,75,50], nbins=6)
 
 
-    def ARD_Plot_DataDL(self, output_file=None, percentage=[95], nbins=6, axis_y_var='K', new=True):
+    def ARD_Plot_DataDL(self, output_file=None, percentage=[95], nbins=6, axis_y_var='K', new=True, legend=True):
         """Plot the Detection Limit obtained from the .ARD_DetectionLimitRV() method"""
 
         if output_file is None:
             output_file = self.output_file_DL
 
-        planets = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
+        planets = self.planets_table.copy()
 
         output_dir = os.path.dirname(output_file)+'/'
         output = pd.read_pickle(output_file)
@@ -334,7 +349,8 @@ class ARD_tableXY(object):
             subP_means, M95 = ardf.Stat_DataDL(output_file, percentage=p, nbins=nbins, axis_y_var=axis_y_var)
             plt.plot(subP_means, M95, color=sm.to_rgba(p),label='%.0f \%%'%(p),marker='o',markeredgecolor='k')
 
-        plt.legend(loc=2)
+        if legend:
+            plt.legend(loc={'M':2,'K':4}[axis_y_var])
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
         plt.ylim(0, 1.05*max(M))
@@ -347,18 +363,27 @@ class ARD_tableXY(object):
 
     def ARD_DetectionLimitStab(self, NlocalCPU=1, integration_time=None, dt=None, Nphases=3, min_dist=3, max_dist=5, Noutputs=20000, GR=1, relaunch=False):
         
+        mstar = self.mstar
+
         subP_means, M95 = ardf.Stat_DataDL(self.output_file_DL, nbins=15, percentage=95)
         D95 = pd.DataFrame({'period':subP_means,'mass':M95})
 
-        table_keplerian = pd.DataFrame(self.planets,columns=['period','semi-amp','ecc','periastron','asc_node','mean_long','mean_anomaly','i', 'mass','semimajor'])
+        table_keplerian = self.planets_table.copy()
 
         grid_p = np.array(D95['period'])
-        for p in np.array(table_keplerian['period']): #thinner grid to explore around existing planets
+        line = np.array(table_keplerian.index)
+        for l in line: #thinner grid to explore around existing planets
+            p, m, e, a = table_keplerian.loc[l,['period','mass','ecc','semimajor']] 
             if p<np.max(D95['period']):
+                Pout = 365.25 * (a * (1+e))**(3./2.) * ((mstar*ardf.Mass_sun+m*ardf.Mass_earth)/(ardf.Mass_sun+ardf.Mass_earth))**(-1./2.)
+                Pin = 365.25 * (a * (1-e))**(3./2.) * ((mstar*ardf.Mass_sun+m*ardf.Mass_earth)/(ardf.Mass_sun+ardf.Mass_earth))**(-1./2.)
+                print(' [INFO] Sampling of period increased around %.1f and %.1f days for Planet P = %.1f days'%(Pin,Pout,p))
+
                 ratio = np.linspace(0.75,1.0,6)-0.05
-                grid_p = np.hstack([grid_p,p*ratio])
-                grid_p = np.hstack([grid_p,p/ratio])
-        grid_p = np.sort(grid_p)
+                grid_p = np.hstack([grid_p,Pout*ratio]) ; grid_p = np.hstack([grid_p,Pout/ratio])
+                grid_p = np.hstack([grid_p,Pin*ratio]) ; grid_p = np.hstack([grid_p,Pin/ratio])
+
+        grid_p = np.unique(np.round(np.sort(grid_p),4))
         D95_interp = interp1d(np.array(D95['period']), np.array(D95['mass']), kind='linear', bounds_error=False, fill_value=0)(grid_p)
 
         D95 = pd.DataFrame({'period':grid_p,'mass':D95_interp})
@@ -369,11 +394,13 @@ class ARD_tableXY(object):
         self.output_file_STDL2 = self.tag+"Final_DynamicalDetectLim.dat"
 
         if relaunch:
-            os.system('rm '+self.output_file_STDL1)
-            os.system('rm '+self.output_file_STDL2)
+            if os.path.exists(self.output_file_STDL1):
+                os.system('rm '+self.output_file_STDL1)
+            if os.path.exists(self.output_file_STDL2):
+                os.system('rm '+self.output_file_STDL2)
 
         if os.path.exists(self.output_file_STDL1):
-            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s'%(self.output_file_STDL1))
+            print(' [INFO] An old processing has already been found! If you want to rerun it again, first Delete the .p file: \n\n %s \n'%(self.output_file_STDL1))
         else:        
             if NlocalCPU == 0: #cluster
                 shift = int(sys.argv[1])

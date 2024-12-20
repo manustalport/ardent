@@ -57,8 +57,8 @@ if False:
     vec.ARD_Set_output_dir(output_directory)  
         
     for line in keplerian.index:
-        p, k, e, omega, mean_long = keplerian.loc[line][['p','k','e','peri','long']].astype('float')
-        vec.ARD_AddPlanets(p=p, k=k, e=e, omega=omega, asc_node = 0.0, mean_long=mean_long, inc=90.0) #set the planets
+        p, k, e, omega, mean_long, m = keplerian.loc[line][['p','k','e','peri','long','mass']].astype('float')
+        vec.ARD_AddPlanets(p=p, k=k, e=e, omega=omega, asc_node = 0.0, mean_long=mean_long, inc=90.0, mass=m) #set the planets
     vec.ARD_PlotPlanets(new=True)
 
     vec.ARD_DetectionLimitRV_auto(fap_level=0.01) 
@@ -68,12 +68,12 @@ if False:
         integration_time = 1000, #years
         dt = 1/365.25,           #years
         Nphases = 1, 
-        min_dist = 3, 
+        min_dist = 1, 
         max_dist = 5, 
         Noutputs = 20000, 
         relaunch=True,
         GR=1)
 
     vec.ARD_Plot_StabDL()
-    vec.ARD_FinalPlot()
+    vec.ARD_FinalPlot(interp='cubic')
 

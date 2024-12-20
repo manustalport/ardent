@@ -1,5 +1,6 @@
 import os
 import pickle
+from datetime import datetime
 from random import uniform
 
 import numpy as np
@@ -13,6 +14,8 @@ from scipy.optimize import curve_fit
 from scipy.special import erf
 from tqdm import tqdm
 
+np.warnings.filterwarnings('ignore', category=RuntimeWarning)
+
 # ---------- Define constants
 
 Gconst = 6.6743*10**(-11) # The universal gravitation constant, in units of m^3/(kg*s^2)  ;  Value from CODATA 2018
@@ -23,6 +26,8 @@ mJ_S = 1.2668653e17 / 1.3271244e20 # Jupiter-to-Solar mass ratio
 Mass_sun = 1.988475e30
 Mass_earth = Mass_sun*mE_S
 Mass_jupiter = Mass_sun*mJ_S
+
+
 
 def erf_function(x, b, c):
     return 0.5 * erf(b * (x - c)) + 0.5
@@ -51,7 +56,6 @@ def AmpStar(ms, periode, amplitude, i=90, e=0, code='Sun-Earth'):
 
     semi_axis = periode**(2./3.) * ((ms+coeff/Mass_sun)/(Mass_sun+Mass_earth))**(1./3.)
     return mp, semi_axis
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 1: data-driven detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
 def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, Nsamples=int(2000), Nphases=int(10), fapLevel=0.01):
@@ -371,6 +375,7 @@ def OrbitCrossing(a, e):
     ------
     orb_cross (bool): True if the orbits of at least one planet pair cross. False otherwise.
     """
+
     orb_cross = 0
     NB_pairs = len(a) - 1
     for i in range(NB_pairs):
@@ -545,8 +550,8 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
 
     test_particle = np.array([P_inject[shift],0,0,0,0,0,0,90,M_lim100[shift],a_lim100[shift]])
     table_keplerian.loc[len(table_keplerian)] = test_particle
-    index0 = np.where(np.sort(table_keplerian['period'].values)==table_keplerian['period'].values[-1])[0][0]
-    table_keplerian = table_keplerian.sort_values(by='period') # ---------- Sort the parameters by increasing a
+    index0 = np.where(np.sort(table_keplerian['semimajor'].values)==table_keplerian['semimajor'].values[-1])[0][0]
+    table_keplerian = table_keplerian.sort_values(by='semimajor') # ---------- Sort the parameters by increasing a
     
     if dt is None:
         dt = np.min(table_keplerian['period'])/365.25/40
@@ -576,13 +581,19 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
     P_inject = P_inject/365.25
 
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
-    print('\n [INFO] Processing stability estimation at period bin %.0f / %.0f'%(shift+1,len(D95['period'])))
-    
-    stab_rate = AnalyticStability(Mstar, a, e, M)
+    now = datetime.now()
+    formatted_time = now.strftime("%H:%M:%S")  # Format: HH:MM:SS
+
+    print('\n [INFO] Processing stability estimation at period bin %.0f / %.0f  <---------'%(shift+1,len(D95['period'])))
+    print(' [INFO] Current time : ',formatted_time)
+
+    stab_rate_analytic = AnalyticStability(Mstar, a, e, M)
+    stab_rate = stab_rate_analytic + 0.0
     crossing = OrbitCrossing(a, e)
+
     stab = 0.
     if stab_rate == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we perform the numerical simulations to precise the system stability
-        if crossing==0:
+        if crossing==1:
             stab_rate = 0. # If orbits are crossing, for sure the system is unstable. No need of numerical simulations.
         else:
             for j in range(Nphases):
@@ -599,7 +610,7 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
 
     file.close()
 
-    print(' [INFO] P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], crossing, stab_rate/100))
+    print(' [INFO] P = %.2f, M = %.2f, Orbit Cross = %.0f, Analytic Stab = %.0f, Stab = %.0f'%(P_inject[shift]*365.25, M_lim100[shift], crossing, stab_rate_analytic, stab_rate/100))
 
     M_lim100[shift] = M_lim100[shift]*mE_S
 
@@ -608,6 +619,8 @@ def DynDL(shift, keplerian_table, D95, output_dir, Mstar=1.0, T=None, dt=None, m
         Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])
         dM = 1000000.
         q = int(0)
+        M_max = M_lim100[shift]
+        M_min = 0.001*mE_S
         while dM > Thresh:
             iteration+=1
             if q == 0 and M_lim100[shift] > 0.001*mE_S:
