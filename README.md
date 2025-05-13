@@ -7,7 +7,7 @@ The code can be used as two separate modules, for the data-driven detection limi
 The simplest way to install ardent on your machine is to use pip. Given that some dependencies have specific versions, I recommend using a virtual environment to avoid conflicts with your own system. 
 
 ### Use 
-Follow the steps of the ardent/Working_Example.py file. 
+Follow the steps of the ardent/WorkingExample.py file. 
 
 ### Contributors 
 + Manu Stalport, University of Liège (contact point)
