@@ -1,690 +1,694 @@
-import numpy as np
+import getopt
 import os
+import pickle
+import sys
+
+import ardent_functions as ardf
+import matplotlib.colors as mcolors
+import numpy as np
+import pandas as pd
+from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
-from random import uniform
-from PyAstronomy.pyTiming import pyPeriod
-from tqdm import tqdm
-import rebound
-import reboundx
-from reboundx import constants
+from matplotlib.cm import ScalarMappable
+from scipy.interpolate import interp1d
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 1: data-driven detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
-def DataDL(sys_name, rvFile, Mstar, rangeP, rangeK, Nsamples=int(2000), Nphases=int(10), fapLevel=0.01, nbins=int(20), plot=True):
-    """
-    Computation of data-driven detection limits. This function outputs a file containing the 95% mass detection limits for periods between Pmin and Pmax.
+#NlocalCPU = int(3) # The number of CPUs allocated to compute the dynamical detection limits, to fasten the computation.
+#    # If NlocalCPU is set to 0, the program will be compatible with external cluster.
+#    # To use the code on a cluster, import all the needed files in the execution folder. Create a virtual environement to install rebound and reboundx.
+#    # Use the argument --array of sbatch to call the programme for each value of P_inject
     
-    Arguments
-    ---------
-    sys_name (string): the name of the system under study.
-    rvFile (string): file name of the RV residual timeseries, i.e. RV with the Keplerians of known planets removed.
-    Mstar (float): stellar mass [M_Sun]
-    rangeP, rangeK (list of floats): minimum and maximum orbital periods and RV semi-amplitudes with which to inject a planet (rangeP=[Pmin,Pmax] units of [days] and rangeK=[Kmin,Kmax] units of [RV rms])
-    Nsamples (int, optional): the number of injected planets in the 2D space (P, M) at a given orbital phase
-    Nphases (int, optional): the number of different orbital phases with which to inject a given planet in the 2D space (P, M). The phase is then spread evenly in [0, 2pi[. The total number of injection-recovery tests corresponds to Nsamples*Nphases.
-    fapLevel (float, optional): the FAP threshold under which we consider a signal as significant in the GLS periodogram.
-    nbins (int, optional): the number of period bins with which to output the 95% mass detection limits.
-    plot (bool, optional): plot the result. default=True.
-    """
-    cwd = os.getcwd() # Current Working Directory
-    path_output = cwd + '/' + sys_name + '_DetectionLimits'
-    if os.path.isdir(path_output) == False:
-        os.system('mkdir ' + path_output)
-    
-    t = np.genfromtxt(rvFile, usecols=(0))
-    rv = np.genfromtxt(rvFile, usecols=(1))
-    rv_err = np.genfromtxt(rvFile, usecols=(2))
-    N = len(rv)
-    rms_rv = np.sqrt(np.sum(rv**2)/N)
-    
-    Pmin = rangeP[0]
-    Pmax = rangeP[1]
-    Kmin = rangeK[0]*rms_rv
-    Kmax = rangeK[1]*rms_rv
-    
-    P = np.zeros(Nsamples)
-    M = np.zeros(Nsamples)
-    detect_rate = np.zeros(Nsamples)
-    phase = np.linspace(-np.pi, np.pi, num=Nphases, endpoint=False)
-    
-    for i in tqdm(range(Nsamples)):
-        logP = uniform(np.log10(Pmin), np.log10(Pmax))
-        P[i] = 10**logP
-        K = uniform(Kmin, Kmax)
-        M[i] = (K/28.435) * Mstar**(2./3.) * (P[i]/365.25)**(1./3.) # [M_Jup]
-        M[i] = M[i] * 1.2668653e17 / 3.986004e14 # [M_Earth]
+# ---------- Define constants
+mE_S = 3.986004e14 / 1.3271244e20 # Earth-to-Solar mass ratio
+mJ_S = 1.2668653e17 / 1.3271244e20 # Jupiter-to-Solar mass ratio
+mE_J = 3.986004e14 / 1.2668653e17 # Earth-to-Jupiter mass ratio
 
-        detect = int(0)
-        for j in range(Nphases):
-            rv_simu = rv - K * np.sin((t*2*np.pi/P[i])+phase[j])
+class ARDENT_tableXY(object):
+    def __init__(self, x, y, yerr, ):
+        self.x = np.array(x)       # jdb times
+        self.y = np.array(y)       # RV time-series in m/s
+        self.yerr = np.array(yerr) # RV uncertainties in m/s
+        self.baseline = np.round(np.max(self.x) - np.min(self.x),0)
+        self.planets = []
+        self.ARD_AddStar()
+        self.ARD_Set_output_dir()
 
-            if 0.6*Pmin > 1.1:
-                period_start = 0.6*Pmin # Periodogram search starts at 40% below of Pmin
-            else:
-                period_start = 1.1
-            period_end = 1.4 * Pmax # Periodogram search ends at 40% above Pmax
+    def ARDENT_Set_output_dir(self,output_dir=None):
+        if output_dir is None:
+            output_dir = os.getcwd()+'/output/'
+            self.output_dir = output_dir
+        else:
+            self.output_dir = output_dir+'/'
             
-            clp = pyPeriod.Gls((t, rv_simu, rv_err), Pbeg=period_start, Pend=period_end, ls=True, norm="ZK")
-            power = clp.power
-            plevels = clp.powerLevel(fapLevel)
-            imax = np.argmax(power)
-            Pmaxpeak = 1/clp.freq[imax]
+        if os.path.isdir(output_dir) == False:
+            os.system('mkdir ' + output_dir)
+            
+        self.tag = self.output_dir+self.starname+'_'
 
-            if power[imax] > plevels and abs(P[i]-Pmaxpeak) < (P[i]*5./100): # power of max peak above 1% FAP and criterion of 5% on P
-                detect += 1
+    def ARDENT_Plot(self,new=True):
+        if new:
+            fig = plt.figure(figsize=(5,4))
+        plt.errorbar(self.x,self.y,yerr=self.yerr,color='k',capsize=0,marker='o',ls='',alpha=0.3)
 
-        detect_rate[i] = detect / Nphases
+    def ARDENT_ResetPlanets(self):
+        self.planets = []
+
+    def ARDENT_ImportPlanets(self,filename):
+        param_names = np.genfromtxt(filename, usecols=(0), dtype=None, encoding=None)
+        param_values = np.genfromtxt(filename, usecols=(1))
+        self.mstar = param_values[param_names=='Mstar'][0]
+        conv = 180/np.pi
+
+        nb_planet = np.sum([p.split('_')[0]=='P' for p in param_names])
+        phase_param = np.sum([p.split('_')[0]=='ML' for p in param_names])
+        if phase_param > 0:
+            ML = True
+        else:
+            ML = False
+            
+        for i in np.arange(1,1+nb_planet):
+            p = param_values[param_names=='P_%.0f'%(i)][0]
+            k = param_values[param_names=='K_%.0f'%(i)][0]
+            e = param_values[param_names=='e_%.0f'%(i)][0]
+            omega = param_values[param_names=='w_%.0f'%(i)][0] # [deg]
+            inc = param_values[param_names=='inc_%.0f'%(i)][0] # [deg]
+            asc_node = param_values[param_names=='asc_node_%.0f'%(i)][0] # [deg]
+            if ML == True:
+                mean_long = param_values[param_names=='ML_%.0f'%(i)][0] # [deg]
+                mean_anomaly = np.nan
+            else:
+                mean_anomaly = param_values[param_names=='MA_%.0f'%(i)][0] # [deg]
+                mean_long = np.nan
+
+            mass,semi_axis = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
+
+            self.planets.append([p, semi_axis, mean_long, mean_anomaly, e, omega, inc, asc_node, k, mass])
+        self.ARD_ShowPlanets()
+
+
+    def ARDENT_AddStar(self,mass=1.00,starname='Sun'):
+        self.starname = starname
+        self.mstar = mass
+
+
+    def ARDENT_AddPlanets(self, p=365.25, semi_major=np.nan, mean_long=0.0, mean_anomaly=np.nan, e=0.0, omega=0.0, inc=90.0, asc_node=0.0, k=0.10, mass=np.nan):
+        """
+        Either a mean_long or mean_anomaly parameters are needed
+        Args:
+            p : orbital period [days]
+            semi_major : semi_major axis in AU
+            mean_long : mean longitude [deg]
+            mean_anomaly : mean anomaly [deg]
+            e : orbital eccentricity
+            omega : argument of periastron [deg]
+            inc : orbital inclination [deg]
+            asc_node : longitude of the ascending node [deg]
+            k : RV semi-amplitude [m/s]
+            mass : planetary mass in Earth mass
+        """
+
+        if (semi_major!=semi_major)|(mass!=mass):
+            mass_comp,semi_major_comp = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
+        
+        if mass!=mass:
+            mass = mass_comp
+            print('\n [INFO] Mass calculated to be %.2f Earth mass'%(mass))
+        
+        if semi_major!=semi_major:
+            semi_major = semi_major_comp
+            print('\n [INFO] Semi-major axis calculated to be %.2f AU'%(semi_major))
+
+        self.planets.append([p, semi_major, mean_long, mean_anomaly, e, omega, inc, asc_node, k, mass])
+        self.ARD_ShowPlanets()
+
+
+    def ARDENT_ShowPlanets(self):
     
+        printed_table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
+        printed_table.index = ['planet %.0f'%(i) for i in range(1,1+len(self.planets))]
+        print('\n [INFO] Planet parameters: \n')
+        print(printed_table)
+        self.planets_table = printed_table.astype('float')
+
+
+    def ARDENT_PlotPlanets(self, new=True, savefig=True, legend=True):
     
-    bins = np.linspace(np.log10(Pmin), np.log10(Pmax), nbins+1)
+        table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
+        phases = np.linspace(-np.pi,np.pi,1000)
+        phases2 = np.linspace(0,np.pi,1000)
+        
+        a = np.array(table['semimajor'])
+        b = np.array(table['semimajor'])*np.sqrt(1-np.array(table['ecc'])**2)
+        c = np.sqrt(a**2-b**2)
 
-    sub_P = []
-    sub_M = []
-    for i in range(len(P)):
-        if detect_rate[i] < 0.9999:
-            sub_P = np.append(sub_P, P[i])
-            sub_M = np.append(sub_M, M[i])
+        x = np.cos(phases)*a[:,np.newaxis] +c[:,np.newaxis]
+        y = np.sin(phases)*b[:,np.newaxis]
 
-    digitized = np.digitize(np.log10(sub_P), bins)
-    subP_means = [sub_P[digitized == i].mean() for i in range(1, len(bins))]
+        if new:
+            plt.figure(figsize=(5,5))
+        plt.axis('equal')
+        plt.rc('font', size=12)
 
-    M_bins = [sub_M[digitized == i] for i in range(1, len(bins))]
-    q = 95 / 100.
-    M95 = [np.quantile(M_bins[i],q) for i in range(nbins)] # The 95% mass limit of data-driven detection for each period bin
+        plt.scatter([0],[0],color='k',marker='x',label=r'%.2f $M_{\odot}$'%(self.mstar))
+        for xi,yi,wi,mi in zip(x,y,np.array(table['periastron']),np.array(table['mass'])):
+            X = np.array([xi,yi])
+            R = np.array([[np.cos(np.pi/180*wi),-np.sin(np.pi/180*wi)],[np.sin(np.pi/180*wi),np.cos(np.pi/180*wi)]])
+            X = np.dot(X.T,R).T
+            plt.plot(X[0],X[1],lw=4,color='white')
+            if mi<100:
+                plt.plot(X[0],X[1],label=r'%.2f $M_{\oplus}$'%(mi))
+            else:
+                plt.plot(X[0],X[1],label=r'%.2f $M_{Jup}$'%(mi*mE_J))
 
-#     os.chdir('/Users/manustalport/Documents/CHEOPS_ProdexLiege/DynamicalAnalyses/DynamicalDetectionLimits/DataDrivenAlgo_Custom')
-#    if os.path.isdir(sys_name) == False:
-#        os.mkdir(sys_name)
-#    os.chdir(sys_name)
-    os.chdir(path_output)
-    file = open('Data-driven_95MassLimits.dat', 'w')
-    file.write('Period[days] Mass[M_Earth]' + '\n')
-    file.write('------------ -------------' + '\n')
-    for i in range(len(M95)):
-        file.write(str(subP_means[i]) + ' ' + str(M95[i]) + '\n')
-    file.close()
+        plt.plot(np.sin(phases),np.cos(phases),color='k',ls='-.',lw=1)
+        plt.axhline(y=0,color='k',ls=':',lw=1,alpha=0.2)
+        plt.axvline(x=0,color='k',ls=':',lw=1,alpha=0.2)
+        if legend:
+            plt.legend(loc=2)
+        plt.xlabel('X [AU]', size='large')
+        plt.ylabel('Y [AU]', size='large')
+
+        hz_inf = np.polyval(np.array([-0.47739653,  0.08719618,  2.92658674, -2.58897268,  1.11537673, -0.06598796]),self.mstar) # From Kopparapu(2013)
+        hz_sup = np.polyval(np.array([ 1.15443229, -6.7284057 , 12.93412033, -8.26643736,  2.72788611,-0.15849661]),self.mstar) # From Kopparapu(2013)
+        
+        hmax = [hz_sup*np.cos(phases2),hz_sup*np.sin(phases2)]
+        hmin = [hz_inf*np.cos(phases2),hz_inf*np.sin(phases2)]
+
+        hmin[1] = interp1d(hmin[0], hmin[1], kind='linear', bounds_error=False, fill_value=0)(hmax[0])
+
+        plt.fill_between(hmax[0],hmin[1],hmax[1],alpha=0.1,color='g')
+        plt.fill_between(hmax[0],-hmin[1],-hmax[1],alpha=0.1,color='g')
+        if savefig:
+            ax = plt.gca() ; xlim = ax.get_xlim()[1]
+            plt.savefig(self.tag+'Planetary_system.png', format='png', dpi = 300)
+            plt.xlim(-1.25,1.25)
+            plt.ylim(-1.25,1.25)
+            plt.savefig(self.tag+'Planetary_system_zoom.png', format='png', dpi = 300)
+            plt.xlim(-xlim,xlim)
+            plt.ylim(-xlim,xlim)
+
+
+    def ARDENT_Plot_MapUpperMass(self, x_au=1.25, detection_limit='RV', interp='cubic'):
+
+        mstar = self.mstar
+
+        if detection_limit=='RV':
+            statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=10, axis_y_var='M')
+        else:
+            P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
+            M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
+            statistic = [P,M_stb]
+
+        a = (statistic[0]/365.25)**(2./3.) * ((mstar+statistic[1]*mE_S)/(1.+mE_S))**(1./3.)
+
+        grid = np.linspace(-x_au,x_au,1000)
+        Gx,Gy = np.meshgrid(grid,grid)
+        R = np.ravel(np.sqrt(Gx**2+Gy**2))
+        M = interp1d(a, statistic[1], kind=interp, bounds_error=False, fill_value=np.nan)(R)
+        M = np.reshape(M,(1000,1000))
+
+        plt.rc('font', size=12)
+        plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=16,cmap='gnuplot')
+        ax = plt.colorbar(pad=0)
+        ax.ax.set_ylabel('95-percent Mass limit detection')
+
+
+    def ARDENT_FinalPlot(self,interp='cubic'):
+        
+        fig = plt.figure(figsize=(14,7))
+        #plt.title(self.starname)
+        plt.rc('font', size=12)
+        
+        plt.subplot(1,2,1)
+        self.ARD_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV',interp=interp)
+
+        plt.subplot(1,2,2)
+        self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab',interp=interp)
+
+        plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
+        plt.savefig(self.tag+'Summary_analysis.png', format='png', dpi = 300)
+
+        fig = plt.figure(figsize=(14,7))
+
+        zoom = 1.00
+        plt.subplot(1,2,1)
+        self.ARD_PlotPlanets(new=False,savefig=False,legend=False)
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV',interp=interp)
+        plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
+
+        plt.subplot(1,2,2)
+        self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
+        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab',interp=interp)
+        plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
+
+        plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
+        plt.savefig(self.tag+'Summary_analysis_zoom.png', format='png', dpi = 300)
+
+
+    def ARDENT_DetectionLimitRV_auto(self, rangeP=None, fap_level=0.01):
+        """
+        Detection limits (data-driven) computation with default settings.
+        Arguments (optional)
+        ---------
+        rangeP (list of floats): The range of orbital periods [days] within which to compute the detection limits.
+        fap_level (float): The maximum False Alarm Probability (FAP) required to detect a RV signal.
+        """
+        
+        if rangeP is None:
+            rangeP = [2,int(np.round(self.baseline*0.55,-1))]
+
+        print(' [INFO] Grid of period between: ',rangeP)
+        print('\n [INFO] First iteration with low resolution')
+        
+        rms = np.std(self.y)
+        print(' [INFO] RMS of the RV vector = %.2f m/s'%(rms))
+
+        #first iteration with sparse sampling
+        self.ARD_DetectionLimitRV(rangeP=rangeP, fap_level=fap_level, Nsamples=300, Nphases=6)
+        file1 = self.output_file_DL
+
+        statistic = ardf.Stat_DataDL(file1, percentage=95, nbins=4, axis_y_var='K')
+
+        K95 = np.median(statistic[1])
+        print(' [INFO] K95 detected around %.2f m/s'%(K95))
+        Kmin = np.round((K95-0.30*rms)/rms,2)
+        Kmax = np.round((K95+0.20*rms)/rms,2)
+        if Kmin<0.10:
+            Kmin = 0.10
+        rangeK = [Kmin,Kmax]
+        print(' [INFO] Second iteration with high resolution')
+        print(' [INFO] Grid of semi-amplitude between: ',rangeK, ' [rms]')
     
-    file = open('Injection-recovery_tests.dat', 'w')
-    file.write('Period[days] Mass[M_Earth] DetectionRate[%]' + '\n')
-    file.write('------------ ------------- ----------------' + '\n')
-    for i in range(len(P)):
-        file.write(str(P[i]) + ' ' + str(M[i]) + ' ' + str(detect_rate[i]) + '\n')
-    file.close()
-    
-    if plot == True:
+        #second iteration with dense sampling
+        self.ARD_DetectionLimitRV(rangeP=rangeP, rangeK=rangeK, fap_level=fap_level, Nsamples=700, Nphases=6)
+        file2 = self.output_file_DL
+
+        print(' [INFO] Merging of the low and high resolutions files...')
+        f1 = pd.read_pickle(file1)
+        f2 = pd.read_pickle(file2)
+        f = {
+            'P':np.hstack([f1['P'],f2['P']]),
+            'K':np.hstack([f1['K'],f2['K']]),
+            'M':np.hstack([f1['M'],f2['M']]),
+            'detect_rate':np.hstack([f1['detect_rate'],f2['detect_rate']]),
+            'Nsamples':np.hstack([f1['Nsamples'],f2['Nsamples']]),
+            'Nphases':f2['Nphases'],
+            'Mstar':f2['Mstar'],
+            'FAP':f2['FAP'],
+            'rangeP':f2['rangeP'],
+            'rangeK':np.hstack([f1['rangeK'],f2['rangeK']]),
+            'inc_inject':f2['inc_inject']
+             }
+        output_file = file2.split('Data-drivenDL')[0]+'Data-drivenDLmerged'+file2.split('Data-drivenDL')[-1]
+        pickle.dump(f,open(output_file,'wb'))
+        self.output_file_DL = output_file
+
+        plt.figure(figsize=(5,10))
+        plt.subplot(2,1,1)
+        self.ARD_Plot_DataDL(nbins=10, percentage=[95,50], axis_y_var='M', new=False)
+        plt.subplot(2,1,2)
+        self.ARD_Plot_DataDL(nbins=10, percentage=[95,50], axis_y_var='K', new=False, legend=False)
+        plt.subplots_adjust(left=0.13,right=0.95,hspace=0.25,top=0.97,bottom=0.07)
+        plt.tight_layout()
+        plt.savefig(output_file.replace('.p','.png'), format='png', dpi = 300)
+
+
+    def ARDENT_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.2], inc_inject=90., fap_level=0.01, Nsamples=500, Nphases=4):
+        """
+        RV detection limits computation (data-driven).
+        Arguments (optional)
+        ---------
+        rangeP (list of floats): Range of orbital periods [days] within which to compute the detection limits
+        rangeK (list of floats): Range of RV semi-amplitudes [m/s]
+        inc_inject (float): Orbital inclination [deg] of the injected body
+        fap_level (float): Maximum False Alarm Probability (FAP) for a signal to be detected
+        Nsamples (int): Number of injected planets in the 2D space (P, K)
+        Nphases (int): Number of orbital phases with which to inject a planet at (P, K). Based on this number, the orbital phase of each injection-recovery test is spread evenly in [-pi,pi[. The total number of injection-recovery tests is given by Nsamples*Nphases.
+        """
+        
+        rvFile = {'jdb':self.x,'rv':self.y,'rv_err':self.yerr}
+        Mstar = self.mstar
+        output_dir = self.output_dir
+
+        version = int(0)
+        output_file = self.tag+'Data-drivenDL_%d.p'%version
+        while os.path.exists(output_file):
+            version += 1
+            output_file = self.tag+'Data-drivenDL_%d.p'%version
+
+        self.output_file_DL = output_file
+        ardf.DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples, Nphases, fap_level)
+        
+        self.ARD_Plot_DataDL(output_file, percentage=[95,50], nbins=6)
+
+
+    def ARDENT_Plot_DataDL(self, output_file=None, percentage=[95], nbins=6, axis_y_var='M', new=True, legend=True):
+        """Plot the detection limits obtained from the .ARD_DetectionLimitRV() method"""
+
+        if output_file is None:
+            output_file = self.output_file_DL
+
+        planets = self.planets_table.copy()
+
+        output_dir = os.path.dirname(output_file)+'/'
+        output = pd.read_pickle(output_file)
+        P = output['P']
+        M = output[axis_y_var]
+        detect_rate = output['detect_rate']
+        Nphases = output['Nphases']
+        Mstar = output['Mstar']
+
+        if axis_y_var!='M':
+            ylabel = 'K [m/s]'
+            keyword = 'semi-amp'
+        else:
+            ylabel = 'Mass [M$_{\oplus}$]'
+            keyword = 'mass'
+
         detect_rate = detect_rate * 100.
         if Nphases < 8:
             cmap = plt.get_cmap('gnuplot', Nphases)
         else:
             cmap = plt.get_cmap('gnuplot', 8)
         
-        fig = plt.figure(figsize=(6,4))
-        plt.rc('text', usetex=True)
-        plt.rc('font', family='serif')
-        plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap)
-        plt.plot(subP_means, M95, color='black')
+        if new:
+            fig = plt.figure(figsize=(6,4))
+        plt.title(self.starname)
+        if planets is not None:
+            planets2 = planets.copy()
+            planets2 = planets2.loc[(planets2['period']>np.min(P))&(planets2['period']<np.max(P))]
+            variable = np.array(planets2[keyword])
+            variable[variable>1.05*np.max(M)] = np.max(M)
+            plt.scatter(planets2['period'],variable,color='k',marker='|',s=20,zorder=9)
+            plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=50,zorder=10)
+
+        plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
+        
+        cmap2 = plt.get_cmap('gnuplot', 100)
+        norm = mcolors.Normalize(vmin=0, vmax=100)
+        sm = ScalarMappable(cmap=cmap2, norm=norm)
+        for n,p in enumerate(percentage):
+            subP_means, M95 = ardf.Stat_DataDL(output_file, percentage=p, nbins=nbins, axis_y_var=axis_y_var)
+            plt.plot(subP_means, M95, color=sm.to_rgba(p),label=r'%.0f $\%%$'%(p),marker='o',markeredgecolor='k')
+
+        if legend:
+            plt.legend(loc={'M':2,'K':4}[axis_y_var])
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
         plt.ylim(0, 1.05*max(M))
-        cb = plt.colorbar(label=r'\large{Detection rate [$\%$]}', pad=0., ticks=[0.,25., 50., 75., 100.])
-        plt.xlabel(r'\large{Period [d]}')
-        plt.ylabel(r'\large{Mass [M$_{\oplus}$]}')
-        plt.tick_params(labelsize=11)
+        cb = plt.colorbar(pad=0., ticks=[0.,25., 50., 75., 100.])
+        cb.set_label(label=r'Detection rate [$\%$]', size='large')
+        plt.rc('font', size=12)
+        plt.xlabel('Period [d]', size='large')
+        plt.ylabel(ylabel, size='large')
+        plt.tick_params(labelsize=12)
         plt.tight_layout()
-        plt.savefig('Data-driven_DL_'+sys_name+'.png', format='png', dpi = 300)
+        
+        fig_title = output_file.replace('.p', '_'+axis_y_var+'vsP.png')
+        plt.savefig(fig_title, format='png', dpi = 300)
     
-    os.chdir(cwd)
+
+    def ARDENT_DetectionLimitStab(self, NlocalCPU=1, DataDLfile=None, param_file=None, nbins=15, integration_time=None, dt=None, Nphases=4, min_dist=3, max_dist=5, Noutputs=20000, NAFFthr=0, GR=False, fine_grid=True, relaunch=False):
+        """
+        Function computing the dynamical detection limits (i.e. detection limits that include the constraint of orbital stability).
+        Arguments (optional)
+        ---------
+        NlocalCPU (int): Number of CPUs to dedicate to the computation of dynamical detection limits. Use NlocalCPU=0 to run the code on an external cluster
+        DataDLfile (string): Filename of the data-driven detection limits
+        param_file (string): Filename of the parameter file
+        nbins (int): The number of period values with which to compute the detection limits (both data-driven and dynamical DL)
+        integration_time (float): Total integration time used to compute the orbital stability [yr]
+        dt (foat): Integration timestep [yr]
+        Nphases (int): Number of orbital phases per injected (P, K) at which to compute the orbital stability.
+        min_dist (float): Criterion on close-encounter [Hill_radius]
+        max_dist (float): Criterion on escape [AU]
+        Noutputs (int): Number of output times with which to compute the NAFF chaos indicator. Value recommended: Noutputs=20000
+        NAFFthr (float): NAFF threshold of stability. Any planetary system with NAFF > NAFFthr is comnsidered as unstable.
+        GR (bool): General relativity correction included if GR=True, False otherwise.
+        fine_grid (bool): Compute a denser grid of detection limits around the periastron and apastron of each planet in the system (known + injected). Default is True.
+        relaunch (bool): Set to True to overwrite any old run with identical settings, False otherwise.
+        """
     
-
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 2: dynamical detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
-################### PART NAFF
-def naf(
-  t,
-  f,
-  nfreqs=5,
-  circ=2 * np.pi,
-  tstep=None,
-  secant_xtol=1e-15,
-  secant_relftol=1,
-  secant_Nmax=10,
-  basis_maxprod=0.5,
-):
-    """NAFF algorithm (see Laskar, 2003)
-    t, f are arrays of time (equally spaced) and signal values.
-    nfreqs is the maximum desired number of frequencies in the decomposition.
-    Depending on the signal the algorithm may return less terms than nfreqs.
-    circ is the circumference of a unit circle (default is 2.pi but can be 360, 1, etc.)
-    tstep = is the time step. If not provided it is set to t[1]-t[0].
-    """
-    N = len(t)
-    N = N - N % 6
-    step = t[1] - t[0] if tstep is None else tstep
-    T = N / 2 * step
-    x = t[:N]
-    g = f[:N].astype(complex)
-    nf = nfreqs
-    freqs = np.empty(nf)
-    amps = np.empty(nf, dtype=complex)
-    vecs = np.empty((nf, N), dtype=complex)
-    basis = np.zeros((nf, nf), dtype=complex)
-    no_more_freq = False
-    for n in range(nf):
-        freqs[n], vecs[n, :], amps[n] = _naf_findmax(
-          x,
-          g * _naf_xi((x - x[0]) / T - 1),
-          step,
-          N,
-          secant_xtol,
-          secant_relftol,
-          secant_Nmax,
-        )
-        # Check if frequency has already been detected
-        for k in range(n):
-            basis[n, k] = _naf_prod(vecs[n, :] * _naf_xi((x - x[0]) / T - 1), vecs[k, :])
-            if abs(basis[n, k]) > basis_maxprod:
-                no_more_freq = True
-        # stop the algorithm if it is the case
-        if no_more_freq:
-            nf = n
-            freqs = freqs[:n]
-            amps = amps[:n]
-            basis = basis[:n, :n]
-            break
-        # completing orthonormal basis and projecting
-        # module of the orthogonal vector
-        mod = np.sqrt(1 - sum(abs(basis[n, k]) ** 2 for k in range(n)))
-        # complete basis matrix and nth vector
-        basis[n, n] = mod
-        vecs[n, :] = vecs[n, :] / mod
-        amps[n] = amps[n] / mod
-        for k in range(n):
-            vecs[n, :] -= basis[n, k] * vecs[k, :] / mod
-        g -= amps[n] * vecs[n, :]
-    # perform the basis change
-    amps = np.linalg.solve(basis.T, amps)
-    return (freqs * circ / (2 * np.pi), amps)
-
-
-def nafprint_header(fundnames, fundfreqs, outfile=None):
-    """Write the header of a naf output file
-    If outfile is not provided, the standard output is used
-    """
-    print('Fundamental frequencies', file=outfile)
-    for k in range(len(fundfreqs)):
-        print(fundnames[k] + ':', fundfreqs[k], file=outfile)
-
-
-def _naf_xi(t):
-    """Weight function for the NAFF algorithm (see Laskar, 2003)."""
-    return 1 + np.cos(np.pi * t)
-
-
-def _naf_findmax(t, f, step, N, xtol, relftol, Nmax):
-    """Find the maximum amplitude of the Fourier transform of f"""
-
-    # Derivative of the amplitude
-    def dAmp(nu):
-        einu = np.exp(1j * nu * t)
-        return 2 * np.real(1j * _naf_prod(f, einu) * np.conj(_naf_prod(t * f, einu)))
-
-    # ifft of f to find a starting value for the secant method
-    Amp = np.abs(np.fft.ifft(f))
-    # Frequencies given by the ifft
-    nus = -2 * np.pi / step * np.fft.fftfreq(N)
-    dnu = 2 * np.pi / step / N
-    # Frequency at the ifft maximum
-    nu0 = nus[np.argmax(Amp)]
-    # Derivative of amplitude
-    dA0 = dAmp(nu0)
-    # Find the zero of the derivative (maximum of amplitude)
-    if dA0 > 0:
-        nu = _naf_secant(dAmp, nu0 + dnu, nu0, xtol, relftol, Nmax)
-    else:
-        nu = _naf_secant(dAmp, nu0 - dnu, nu0, xtol, relftol, Nmax)
-    einut = np.exp(1j * nu * t)
-    return (nu, einut, _naf_prod(f, einut))
-
-
-def _naf_prod(f, g):
-    """Integral of f * conj(g)"""
-    return sum(f * np.conj(g)) / len(f)
-
-
-def _naf_secant(f, a0, b0, xtol, relftol, Nmax):
-    """Secant method to find the zero of f"""
-    a = a0
-    b = b0
-    fa = f(a0)
-    fb = f(b0)
-    N = 0
-    while fb != 0 and abs(a - b) > xtol and abs(fa / fb - 1) > relftol and Nmax > N:
-        c = b + (a - b) * fb / (fb - fa)
-        a = b
-        fa = fb
-        b = c
-        fb = f(b)
-        N += 1
-    return b
-
-  
-################### HILL RADIUS
-def HillRad(a, Mp, Mstar):
-    """Hill radius [AU]:
-    r_H = a * (m1/(3*m0))**(1./3.)
-    , where the indexes 0, 1 refer to the star, and planet"""
-
-    mE_S = 3.986004e14 / 1.3271244e20
-    r_H = a * (Mp/(3*Mstar))**(1./3.)
-    
-    return r_H
-
-################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
-def Stability(KepParam, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=1):
-    """Function for the dynamical evolution followed with stability estimation of the orbits.
-    KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, lam, ecc, w, inc, Omega, Mass] where
-        a is semi-major axis [AU]
-        lam is mean longitude [rad]
-        ecc is orbital eccentricity
-        w is argument of perisatron [rad]
-        inc is orbital inclination [[rad]
-        Omega is longitude of ascending node [rad]
-        Mass is planetary mass [M_Sun]
-    Mstar: stellar mass [M_Sun]
-    Nplanets: number of KNOWN planets (not counting the injected body)
-    T: Total integration time
-    dt: rebound integration timestep
-    min_dist and max_dist: The minimum and maximum allowed distances, respectively. The former serves as close encounter criterion, the latter as escape criterion.
-    Noutputs: the number of output times desired to compute the orbital stability. Default is 20000.
-    NAFF_Thresh: The NAFF threshold above which the system is considered unstable. Default is 0. """
-    Nbodies = int(Nplanets + 1) # The total number of bodies excluding the star, i.e. Nplanets + 1 injected planet
-    
-    a = KepParam[0]
-    phase = KepParam[1]
-    e = KepParam[2]
-    w = KepParam[3]
-    inc = KepParam[4]
-    O = KepParam[5]
-    M = KepParam[6]
-    
-    if ML == True: # Mean Longitude is provided
-        sim = rebound.Simulation()
-        sim.add(m=Mstar)
-        sim.add(m=M[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
-            sim.add(primary=sim.particles[0], m=M[q], a=a[q], l=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q]) # Infos sur les definitions des parametres orbitaux et leurs "unites": voir 'REBOUND: infos pratiques' dans Notes.
-            q += 1
+        mstar = self.mstar
+        table_keplerian = self.planets_table.copy()
+        
+        if DataDLfile is None:
+            subP_means, M95 = ardf.Stat_DataDL(self.output_file_DL, nbins=nbins, percentage=95)
+            output = pd.read_pickle(self.output_file_DL)
+            inc_inject = output['inc_inject']
             
-    elif ML == False: # Mean Anomaly is provided
-        sim = rebound.Simulation()
-        sim.add(m=Mstar)
-        sim.add(m=M[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
-            sim.add(primary=sim.particles[0], m=M[q], a=a[q], M=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q]) # Infos sur les definitions des parametres orbitaux et leurs "unites": voir 'REBOUND: infos pratiques' dans Notes.
-            q += 1
-      
-    sim.move_to_com()
-    sim.dt = dt
-    sim.integrator = "ias15" # REMARQUE: integrateur non symplectique utilise par soucis de generalite avec l'etude dynamique: on veut pouvoir etendre l'etude aux systemes binaires.
-
-    sim.exit_max_distance = max_dist
-    sim.exit_min_distance = min_dist
-    
-    if GR == 1:
-        ##*************** REBOUNDX PART *****************
-        rebx = reboundx.Extras(sim)
-        gr = rebx.load_force("gr")
-        rebx.add_force(gr)
-        gr.params["c"] = constants.C
-        ##************************************************
-        eilambda = np.zeros((Nbodies, Noutputs))
-        time = np.zeros(Noutputs)
-    elif GR == 0:
-        eilambda = np.zeros((Nbodies, Noutputs))
-        time = np.zeros(Noutputs)
-
-    dt_output = round(T / (Noutputs * dt / (2*np.pi))) # The number of timesteps between consecutive outputs
-
-    try:
-        for j in range(Noutputs):
-            t_output = dt_output*(j+1)*dt
-            sim.integrate(t_output) # sans le 2eme argument, on a implicitement que exact_finish_time=1
-            time[j] = t_output/(2*np.pi)
-
-            for q in range(Nbodies):
-                eilambda[q][j] = sim.particles[q+1].l
-                
-        ######### stability computation -- NAFF algorithm
-        var_freq = np.zeros(Nbodies)
-        t_NAFF = np.arange(1,int(Noutputs/2 + 1)) # Vecteur d'entiers allant de 1 a Noutputs/2 inclus
-        Delta_t = time[0]
-
-        for i in range(Nbodies):
-            freq1, amp = naf(t_NAFF, eilambda[i][:int(Noutputs/2)],1)
-            freq1 = freq1 / Delta_t
-            freq2, amp = naf(t_NAFF, eilambda[i][int(Noutputs/2):],1)
-            freq2 = freq2 / Delta_t
-            #################################################################################
-            var_freq_1 = abs(freq2-freq1 - 1./(2*Delta_t)).item()
-            var_freq_2 = abs(freq2-freq1).item()
-            var_freq_3 = abs(freq2-freq1 + 1./(2*Delta_t)).item()
-            delta_n = min(var_freq_1,var_freq_2,var_freq_3)
-
-            mE_S = 3.986004e14 / 1.3271244e20
-            n = a[i]**(-1.5) * 2*np.pi * ((Mstar+M[i])/(1+mE_S))**0.5
-            var_freq[i] = np.log10(abs(delta_n/n))
-
-        NAFF_max = max(var_freq)
-
-        if NAFF_max < NAFF_Thresh:
-            stab = 1.
+            version = int(0)
+            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
+            output_file = self.output_file_STDL1
+            self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
+            while os.path.exists(self.output_file_STDL1):
+                version += 1
+                self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
+                output_file = self.output_file_STDL1
+                self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
         else:
-            stab = 0.
-                
-
-    except rebound.Escape:
-        stab = 0.
-
-    except rebound.Encounter:
-        stab = 0.
-
-    return stab
-
-
-
-#############################
-################### MAIN CODE
-#def DynDL(shift, Nplanets, param_file, DataDrivenLimitsFile, output_file, DetectLim0File):
-def DynDL(sys_name, shift, Nplanets, param_file, DataDrivenLimitsFile):
-    """
-    Computation of the dynamical detection limits
-    
-    Arguments
-    ---------
-    shift (int): index indicating at which value of the period one computes the dynamical detection limits (for parallel computations)
-    Nplanets (int): the number of known planets in the system (not counting for the injected one)
-    param_file (string): name of the parameters file
-    DataDrivenLimitsFile (string): name of the data-driven detection limits file
-    output_file (string): name of the extensive output file
-    DetectLim0File (string): name of the dynamical detection limits output file
-    """
-    cwd = os.getcwd() # Current Working Directory
-    path_output = cwd + '/' + sys_name + '_DetectionLimits'
-    if os.path.isdir(path_output) == False:
-        os.system('mkdir ' + path_output)
+            subP_means, M95 = ardf.Stat_DataDL(DataDLfile, nbins=nbins, percentage=95)
+            output = pd.read_pickle(DataDLfile)
+            inc_inject = output['inc_inject']
+            
+            split_filename = DataDLfile.split('_')[-1]
+            version = int(split_filename.split('.')[0])
+            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
+            output_file = self.output_file_STDL1
+            self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
+            
+        D95 = pd.DataFrame({'period':subP_means,'mass':M95})
         
-    # ---------- Define constants
-    mE_S = 3.986004e14 / 1.3271244e20 # Earth-to-Solar mass ratio
-    mJ_S = 1.2668653e17 / 1.3271244e20 # Jupiter-to-Solar mass ratio
-    
-    output_file = "AllStabilityRates.dat"
-    DetectLim0File = "Final_DynamicalDetectLim.dat"
-    # --- If this is the first call to this function, create the output files
-    if shift == int(0):
-        os.chdir(path_output)
-        file = open(output_file, 'a')
-        file.write('Period Mass Stability_rate' + '\n')
-        file.write('------ ---- --------------' + '\n')
-        file.close()
+        if fine_grid == True: # Thinner grid to explore around existing planets
+            grid_p = np.array(D95['period'])
+            line = np.array(table_keplerian.index)
+            N_finegrids = int(0)
+            for l in line:
+                p, m, e, a = table_keplerian.loc[l,['period','mass','ecc','semimajor']]
+                if p<np.max(D95['period']) and p>np.min(D95['period']):
+                    N_finegrids += 1
 
-        file0 = open(DetectLim0File, 'a')
-        file0.write('Period Mass Stability_rate' + '\n')
-        file0.write('------ ---- --------------' + '\n')
-        file0.close()
-        os.chdir(cwd)
-    
-    # ---------- Get the parameters
-    param_names = np.genfromtxt(param_file, usecols=(0), dtype=None, encoding=None)
-    param_values = np.genfromtxt(param_file, usecols=(1))
+                    Pout_min = 365.25 * (a * (1+e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) - (p/6)
+                    Pout_max = 365.25 * (a * (1+e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) + (p/6)
+                    Pin_max = 365.25 * (a * (1-e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) + (p/6)
+                    Pin_min = 365.25 * (a * (1-e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) - (p/6)
+                    if Pin_max < Pout_min:
+                        Pin = 10**np.linspace(np.log10(Pin_min),np.log10(Pin_max),6)
+                        Pout = 10**np.linspace(np.log10(Pout_min),np.log10(Pout_max),6)
+                        grid_p = np.hstack([grid_p,Pin]) ; grid_p = np.hstack([grid_p,Pout])
 
-    P = np.zeros(Nplanets+1)
-    phase = np.zeros(Nplanets+1)
-    e = np.zeros(Nplanets+1)
-    w = np.zeros(Nplanets+1)
-    inc = np.zeros(Nplanets+1)
-    O = np.zeros(Nplanets+1)
-    K = np.zeros(Nplanets+1)
-    ### Derived planet parameters
-    a = np.zeros(Nplanets+1) # semi-major axis [AU]
-    M = np.zeros(Nplanets+1) # planet mass [MSun]
-    
-    Mstar = -9999
-    T = -9999
-    dt = -9999
-    # Same for the optional parameters
-    Nphases = -9999
-    min_dist = -9999
-    max_dist = -9999
-    Noutputs = -9999
-    NAFF_Thresh = -9999
-    GR = -9999
+                    else:
+                        Periods = 10**np.linspace(np.log10(Pin_min), np.log10(Pout_max), 6)
+                        grid_p = np.hstack([grid_p,Periods])
 
-    for j in range(len(param_names)):
-        if param_names[j] == 'Mstar':
-            Mstar = param_values[j]
-        if param_names[j] == 'Nphases':
-            Nphases = int(param_values[j])
-#            Nphases_given = True
-        if param_names[j] == 'e_inject':
-            e[-1] = param_values[j]
-        if param_names[j] == 'w_inject':
-            w[-1] = param_values[j]
-        if param_names[j] == 'i_inject':
-            inc[-1] = param_values[j]
-        if param_names[j] == 'O_inject':
-            O[-1] = param_values[j]
-        if param_names[j] == 'T':
-            T = param_values[j]
-        if param_names[j] == 'dt':
-            dt = param_values[j] * 2*np.pi # Conversion to REBOUND units: 1yr = 2pi
-        if param_names[j] == 'min_dist':
-            min_dist = param_values[j]
-#            mindist_given = True
-        if param_names[j] == 'max_dist':
-            max_dist = param_values[j]
-#            maxdist_given = True
-        if param_names[j] == 'Noutputs':
-            Noutputs = int(param_values[j])
-#            Nout_given = True
-        if param_names[j] == 'NAFF_Thresh':
-            NAFF_Thresh = param_values[j]
-#            NAFFthresh_given = True
-        if param_names[j] == 'GR':
-            GR = int(param_values[j])
-#            GR_given = True
-         
-    # --- Raise exception if some necessary parameter was not specified in the parameters file
-    if Mstar == -9999:
-        raise Exception(f"Mstar not found in the parameters file")
-    if T == -9999:
-        raise Exception(f"T (total integration time) not found in the parameters file")
-    if dt == -9999:
-        raise Exception(f"dt (integration timestep) not found in the parameters file")
-    
-    # --- Define some defaults values if not specified in the parameters file
-    if Nphases == -9999:
-        Nphases = int(6)
-    if min_dist == -9999:
-        min_dist = 1.
-    if max_dist == -9999:
-        max_dist = 5.
-    if Noutputs == -9999:
-        Noutputs = int(20000)
-    if NAFF_Thresh == -9999:
-        NAFF_Thresh = 0.0
-    if GR == -9999:
-        GR = int(0)
+            if N_finegrids > 0:
+                grid_p = np.unique(np.round(np.sort(grid_p),4))
+                D95_interp = interp1d(np.array(D95['period']), np.array(D95['mass']), kind='linear', bounds_error=False, fill_value=0)(grid_p)
+            
+                D95 = pd.DataFrame({'period':grid_p,'mass':D95_interp})
+        N = len(D95['period'])
+        self.D95 = D95
         
-    # --- Get the known planet's parameters
-    for i in range(Nplanets):
-        for j in range(len(param_names)):
-            if param_names[j] == 'P_%d' %(i+1):
-                P[i] = param_values[j] / 365.25 #[years]
-            if param_names[j] == 'ML_%d' %(i+1):
-                phase[i] = param_values[j]
-                ML = True
-            if param_names[j] == 'MA_%d' %(i+1):
-                phase[i] = param_values[j]
-                ML = False # Input is the Mean Anomaly MA instead of the Mean Longitude ML
-            if param_names[j] == 'e_%d' %(i+1):
-                e[i] = param_values[j]
-            if param_names[j] == 'w_%d' %(i+1):
-                w[i] = param_values[j]
-            if param_names[j] == 'i_%d' %(i+1):
-                inc[i] = param_values[j]
-            if param_names[j] == 'O_%d' %(i+1):
-                O[i] = param_values[j]
-            if param_names[j] == 'K_%d' %(i+1):
-                K[i] = param_values[j]
-
-        M[i] = (K[i] / 28.435) * P[i]**(1./3.) * Mstar**(2./3.)   # in Jupiter masses
-        M[i] = M[i] * mJ_S
-
-        a[i] = P[i]**(2./3.) * ((Mstar+M[i])/(1.+mE_S))**(1./3.)
-    
-    
-    # ---------- Extract the period and mass of the injected planet, according to the data-driven detection limits. Then convert P to a.
-    P_inject = np.genfromtxt(DataDrivenLimitsFile, usecols=(0), skip_header=(2))
-    M_lim100 = np.genfromtxt(DataDrivenLimitsFile, usecols=(1), skip_header=(2)) # The 100% detection threshold mass for each period
-    
-    P_inject = P_inject / 365.25 # [yr]
-    M_lim100 = M_lim100 * mE_S # [M_Sun]
-
-    M[-1] = M_lim100[shift]
-    a[-1] = P_inject[shift]**(2./3.) * ((Mstar+M[-1])/(1.+mE_S))**(1./3.)
-    
-    
-    # ---------- Sort the parameters by increasing a
-    indexes = np.argsort(a)
-    a = np.array(a)[indexes]
-    phase = np.array(phase)[indexes]
-    e = np.array(e)[indexes]
-    w = np.array(w)[indexes]
-    inc = np.array(inc)[indexes]
-    O = np.array(O)[indexes]
-    M = np.array(M)[indexes]
-    
-    params = [a,phase,e,w,inc,O,M] # Keep the order of the elements! a,lam,e,w,inc,O,M
-    phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, I generate Nphases points with constant interval in [start, stop[ (the last value is excluded)
-    
-    min_dist = min_dist * HillRad(a[0], M[0], Mstar)
-    max_dist = max_dist * a[-1]
-
-    # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
-    os.chdir(path_output)
-    stab = 0.
-    for j in range(Nphases):
-        phase[indexes[-1]] = phases_inject[j]
-        stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
-
-    stab_rate = round((stab / Nphases) * 100.) # Rate of stable systems, in %
-    file = open(output_file, 'a')
-    file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
-    file.close()
-
-    if stab_rate <= 0.1: # If the rate of stability is smaller than 0.1%
-        Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])
-        dM = 1000000.
-        q = int(0)
-        while dM > Thresh:
-            if q == 0 and M_lim100[shift] > 0.001*mE_S:
-                M[indexes[-1]] = 0.001*mE_S
-                a[indexes[-1]] = P_inject[shift]**(2./3.) * ((Mstar+M[indexes[-1]])/(1.+mE_S))**(1./3.)
-                stab = 0.
-                for j in range(Nphases):
-                    phase[indexes[-1]] = phases_inject[j]
-                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab is a binary number: 0 = unstable, 1 = stable
-
-                stab_rate = round((stab / Nphases) * 100.)
-                file = open(output_file, 'a')
-                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
-                file.close()
-
-                if stab_rate > 0.1:
-                    M_max = M_lim100[shift]
-                    M_min = 0.001*mE_S
-                    dM = M_max - M_min
-
+        if param_file is not None:
+            param_names = np.genfromtxt(param_file, usecols=(0), dtype=None, encoding=None)
+            param_values = np.genfromtxt(param_file, usecols=(1))
+            for index in range(len(param_names)):
+                if param_names[index] == 'T':
+                    integration_time = param_values[index]
+                if param_names[index] == 'dt':
+                    dt = param_values[index]
+                if param_names[index] == 'Nphases':
+                    Nphases = int(param_values[index])
+                if param_names[index] == 'min_dist':
+                    min_dist = param_values[index]
+                if param_names[index] == 'max_dist':
+                    max_dist = param_values[index]
+                if param_names[index] == 'Noutputs':
+                    Noutputs = int(param_values[index])
+                if param_names[index] == 'NAFFthr':
+                    NAFFthr = param_values[index]
+                if param_names[index] == 'GR':
+                    GR = int(param_values[index])
+                    
+        if NlocalCPU > 0: #local CPU
+            if os.path.exists(self.output_file_STDL1) and os.path.exists(self.output_file_STDL2):
+                if relaunch:
+                    print(' [INFO] An old processing has been found. Overwriting the output files (relaunch=True). ')
+                    
+                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
+                    
                 else:
-                    dM = 0. # Get out of the loop
-                    Mlim = M[indexes[-1]]
-
-            elif q == 0 and M_lim100[shift] == 0.001*mE_S:
-                dM = 0. # Get out of the loop
-                Mlim = M[indexes[-1]]
-
+                    print(' [INFO] An old processing has been found, and relaunch=False. First delete or rename the output files below prior to launch a new processing, or set relaunch to True: \n %s \n %s \n '%(self.output_file_STDL1, self.output_file_STDL2))
+                    
             else:
-                M[indexes[-1]] = (M_max+M_min) / 2.
-                a[indexes[-1]] = P_inject[shift]**(2./3.) * ((Mstar+M[indexes[-1]])/(1.+mE_S))**(1./3.)
-                stab = 0.
-                for j in range(Nphases):
-                    phase[indexes[-1]] = phases_inject[j]
-                    stab += Stability(params, ML, Mstar, Nplanets, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR)
+                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
 
-                stab_rate = round((stab / Nphases) * 100.)
-                file = open(output_file, 'a')
-                file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
-                file.close()
+        elif NlocalCPU == 0: #cluster
+            ##### On the cluster, the code always overwrites potential old processings with the same name.
+            shift = int(sys.argv[1])
+#                    n_jobs = int(sys.argv[2])
+            ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR)
 
-                if stab_rate > 0.1:
-                    M_min = M[indexes[-1]]
 
-                elif stab_rate <= 0.1:
-                    M_max = M[indexes[-1]]
+#        if os.path.exists(self.output_file_STDL1) and os.path.exists(self.output_file_STDL2):
+#            if relaunch:
+#                print(' [INFO] An old processing has been found. Overwriting the output files (relaunch=True). ')
+#                if NlocalCPU == 0: #cluster
+#                    shift = int(sys.argv[1])
+##                    n_jobs = int(sys.argv[2])
+#                    ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR)
+#
+#                elif NlocalCPU > 0: #local CPU
+#                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
+#
+#            else:
+#                print(' [INFO] An old processing has been found, and relaunch=False. First delete or rename the output files below prior to launch a new processing, or set relaunch to True: \n\n %s \n %s \n '%(self.output_file_STDL1, self.output_file_STDL2))
+#
+#        else:
+#            if NlocalCPU == 0: #cluster
+#                shift = int(sys.argv[1])
+##                    n_jobs = int(sys.argv[2])
+#                ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR)
+#
+#            elif NlocalCPU > 0: #local CPU
+#                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
 
-                dM = M_max - M_min
-                Mlim = M_max
 
-            q += 1
+    def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None):
+        """
+        Plot the detection limits, both data-driven limits and dynamical detection limits.
+        Arguments (optional)
+        ---------
+        DataDLfile (string): filename of the data-driven detection limits file
+        DynDLfile (string): filename of the dynamical detection limits file
+        """
+        if DynDLfile is None and DataDLfile is None:
+            P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
+            M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
+            P_dataDL = self.D95['period']
+            M_dataDL = self.D95['mass']
+        elif DynDLfile is not None and DataDLfile is not None:
+            P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
+            M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(2))
+            P_dataDL = np.genfromtxt(DataDLfile, usecols=(0), skip_header=int(2))
+            M_dataDL = np.genfromtxt(DataDLfile, usecols=(1), skip_header=int(2))
+        else:
+            print(' [ERROR] Both DataDL and DynDL files must be given, or none.')
 
-        file = open(DetectLim0File, 'a')
-        file.write(str(P_inject[shift]*365.25) + ' ' + str(Mlim/mE_S) + ' ' + str(stab_rate) + '\n')
-        file.close()
+        indexes = np.argsort(P)
+        P = np.array(P)[indexes]
+        M_stb = np.array(M_stb)[indexes]
+        
+        fig = plt.figure(figsize=(5,4))
 
-    else:
-        file = open(DetectLim0File, 'a')
-        file.write(str(P_inject[shift]*365.25) + ' ' + str(M[indexes[-1]]/mE_S) + ' ' + str(stab_rate) + '\n')
-        file.close()
+        plt.plot(P_dataDL, M_dataDL, color='lightgray', lw=2, marker='o', mfc='white', ms=6, mew=1.5, zorder=2, alpha=1, label='w/o stability') #color='xkcd:mahogany'darkgray goldenrod
+        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=2, marker='o', ms=4, zorder=10, label='w stability') #color='xkcd:fire engine red'firebrick
+        plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
+        plt.xscale('log')
+
+        planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
+        planets = planets.loc[(planets['period']>np.min(P))&(planets['period']<np.max(P))]
+        variable = np.array(planets['mass'])
+        variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
+        plt.scatter(planets['period'],variable,color='k',marker='|',s=20,zorder=9)
+        plt.scatter(planets['period'],planets['mass'],color='k',marker='*',s=50,zorder=10)
+
+        plt.rc('font', size=12)
+        plt.xlabel('Period [d]', size='x-large')
+        plt.ylabel(r'Mass [M$_{\oplus}$]', size='x-large')
+        plt.tick_params(labelsize=12)
+        plt.legend(loc='upper left')
+        plt.tight_layout()
+        plt.ylim(0,np.max(M_dataDL)+1)
+        plt.savefig(self.tag+'FinalDetectionLimits.png', format='png', dpi = 300)
         
         
+    def ARDENT_TestStability(self, P_inject, m_inject, ML_inject=0., MA_inject=None, e_inject=0., w_inject=0., inc_inject=90., ascnode_inject=0., param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
+    
+        mstar = self.mstar
+        table_keplerian = self.planets_table.copy()
+        
+        a_inject = (P_inject/365.25)**(2./3.) * ((mstar + m_inject*mE_S)/(1+mE_S))**(1./3.) # [AU]
+        injected_planet = np.array([P_inject,a_inject,ML_inject,MA_inject,e_inject,w_inject,inc_inject,ascnode_inject,np.nan,m_inject])
+        table_keplerian.loc[len(table_keplerian)] = injected_planet
+        table_keplerian = table_keplerian.sort_values(by='semimajor')
 
-################### PLOT THE FINAL DETECTION LIMITS
-def plot_DL(sys_name, data_driven='Data-driven_95MassLimits.dat', stability_driven='Final_DynamicalDetectLim.dat'):
-    """
-    Plot the detection limits, both data-driven limits and dynamical detection limits.
-    
-    Arguments
-    ---------
-    sys_name (string): Name of the system
-    data_driven (string, optional): Filename of the data-driven detection limits
-    stability_driven (string, optional): Filename of the dynamical detection limits
-    """
-    cwd = os.getcwd() # Current Working Directory
-    path_output = cwd + '/' + sys_name + '_DetectionLimits'
-    if os.path.isdir(path_output) == False:
-        os.system('mkdir ' + path_output)
-    os.chdir(path_output)
-    
-    P = np.genfromtxt(stability_driven, usecols=(0), skip_header=int(2))
-    M_stb = np.genfromtxt(stability_driven, usecols=(1), skip_header=int(2))
-    M_data = np.genfromtxt(data_driven, usecols=(1), skip_header=int(2))
+        output_file = self.tag + 'TestStability_P' + str(np.round(P_inject,1)) + '_m' + str(np.round(m_inject,1)) + '.dat'
+        self.output_evolution = output_file
 
-    indexes = np.argsort(P)
-    P = np.array(P)[indexes]
-    M_stb = np.array(M_stb)[indexes]
+        if os.path.exists(output_file):
+            if relaunch:
+                print(' [INFO] An old processing has been found. Overwriting the output file (relaunch=True). ')
+                ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
+                        
+            else:
+                print(' [INFO] An old processing has been found, and relaunch=False. First delete the output file below prior to launch a new simulation: \n\n ' + self.output_evolution)
+                
+        else:
+            ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
+        
+
+
+    def ARDENT_PlotOrbitalElements(self, P_inject, m_inject, output_file=None, Noutputs=1000):
     
-    fig = plt.figure(figsize=(5,4))
-    plt.rc('text', usetex=True)
-    plt.rc('font', family='serif')
-    plt.plot(P, M_data, color='xkcd:mahogany', lw=3.0, zorder=2, label=r'\large{w/o stability}')
-    plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=3.0, zorder=10, label=r'\large{w stability}')
-    plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
-    plt.xscale('log')
-    plt.xlabel(r'\Large{Period [d]}')
-    plt.ylabel(r'\Large{Mass [M$_{\oplus}$]}')
-    plt.tick_params(labelsize=12)
-    plt.legend(loc='upper left')
-    plt.tight_layout()
-    plt.savefig('FinalDetectionLimits_'+sys_name+'.png', format='png', dpi = 300)
+        table_keplerian = self.planets_table.copy()
+        Nbodies = len(table_keplerian) + 1 # The number of known planets + the injected one
+        P = np.append(np.array(table_keplerian['period']), P_inject)
+        P = np.sort(P)
+        
+        if output_file is None:
+            time =  np.genfromtxt(self.output_evolution, skip_header=2, usecols=(0))
+            Noutputs = len(time)
+            a = np.zeros((Noutputs, Nbodies))
+            ecc = np.zeros((Noutputs, Nbodies))
+            w = np.zeros((Noutputs, Nbodies))
+            for i in range(Nbodies):
+                a[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+1))
+                ecc[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+2))
+                w[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+3))
+                
+        else:
+            time = np.genfromtxt(output_file, skip_header=2, usecols=(0))
+            Noutputs = len(time)
+            a = np.zeros((Noutputs, Nbodies))
+            ecc = np.zeros((Noutputs, Nbodies))
+            w = np.zeros((Noutputs, Nbodies))
+            for i in range(Nbodies):
+                a[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+1))
+                ecc[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+2))
+                w[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+3))
+
+        print(' [INFO] Preparing plot of the temporal evolution of the orbital elements. ')
+        fig = plt.figure(figsize=(14,4))
+        plt.title(self.starname + ' -- P_inject: ' + str(P_inject) + ' ; m_inject: ' + str(m_inject))
+        plt.rc('font', size=12)
+        colors = ['cornflowerblue', 'sandybrown', 'mediumseagreen', 'indianred', 'lightgrey', 'mediumorchid', 'palegreen', 'hotpink', 'darkturquoise']
+        
+        plt.subplot(1,3,1)
+        for i in range(Nbodies):
+            plt.plot(time, a[:,i], lw=1.8, alpha=0.8, color=colors[i], label='P=%.2f d'%P[i])
+            plt.xlabel('Time [yr]', size='x-large')
+            plt.ylabel(r'a [AU]', size='x-large')
+            plt.xlim(0,time[-1])
+            plt.legend() #loc='upper left'
+
+        plt.subplot(1,3,2)
+        for i in range(Nbodies):
+            plt.plot(time, ecc[:,i], lw=1.8, alpha=0.8, color=colors[i])
+            plt.xlabel('Time [yr]', size='x-large')
+            plt.ylabel(r'Ecc', size='x-large')
+            plt.xlim(0,time[-1])
+
+        plt.subplot(1,3,3)
+        for i in range(Nbodies):
+            plt.plot(time, w[:,i], lw=1.8, alpha=0.8, color=colors[i])
+            plt.xlabel('Time [yr]', size='x-large')
+            plt.ylabel(r'$\omega$ [rad]', size='x-large')
+            plt.xlim(0,time[-1])
+
+        plt.tight_layout()
+        plt.subplots_adjust(wspace=0.25)
+        plt.savefig(self.tag+'LongTermEvolution.png', format='png', dpi = 300)
+
+
