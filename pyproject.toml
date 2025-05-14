@@ -1,7 +1,7 @@
 [project]
 name = "ardent"
 description = "A package for computing dynamical exoplanet detection limits from radial velocity timeseries."
-readme = "README.rst"
+readme = "README.md"
 authors = [
     { name = "Manu Stalport", email = "manu.stalport@uliege.be" }
 ]
@@ -19,3 +19,18 @@ dynamic = ["version"]
 
 [project.urls]
 homepage = "https://github.com/manustalport/ardent"
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = 'setuptools.build_meta'
+
+[tool.setuptools_scm]
+write_to = "ardent/_version.py"
+
+[tool.setuptools]
+zip_safe = false
+
+[tool.setuptools.packages.find]
+
+[tool.setuptools_scm]
+write_to = "ardent/version.py"
