@@ -1,0 +1,21 @@
+[project]
+name = "ardent"
+description = "A package for computing dynamical exoplanet detection limits from radial velocity timeseries."
+readme = "README.rst"
+authors = [
+    { name = "Manu Stalport", email = "manu.stalport@uliege.be" }
+]
+license = { text = "BSD 3-Clause License" }
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "rebound=4.4.3",
+    "reboundx=4.3.0",
+    "joblib",
+    "tqdm", 
+    "PyAstronomy"
+]
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/manustalport/ardent"
