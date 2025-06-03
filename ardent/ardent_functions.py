@@ -39,14 +39,16 @@ def ang_rad(angle):
     return angle
     
 def AmpStar(ms, P, K, e=0., i=90.):
-    """Function computing the planet mass and semi-major axis of its orbit given the RV semi-amplitude, period of RV signal and stellar mass.
+    """
+    Function computing the planet mass and semi-major axis of its orbit given the RV semi-amplitude, period of RV signal and stellar mass.
+    
     Arguments
     ---------
     ms (float): stellar mass [M_Sun]
-    Period (float): period of RV signal [days]
-    Amplitude (float): RV semi-amplitude [m/s]
-    i (float): the orbital inclination [rad]
-    e (float): the orbital eccentricity
+    P (float): period of RV signal [days]
+    K (float): RV semi-amplitude [m/s]
+    e (float, optional): the orbital eccentricity (default=0)
+    i (float, optional): the orbital inclination [deg] (default=90)
     
     Ouptut
     ------
@@ -71,12 +73,13 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(
     
     Arguments
     ---------
-    output_file (string): name of the output file containing the injection-recovery samples and info.
+    output_file (string): name of the file that will contain the output of the injection-recovery tests.
     rvFile (string or dict): file (or dictionary) name of the RV residual timeseries, i.e. RV with the Keplerians of known planets removed.
     Mstar (float): stellar mass [M_Sun]
     rangeP, rangeK (list of floats): minimum and maximum orbital periods and RV semi-amplitudes with which to inject a planet (rangeP=[Pmin,Pmax] units of [days] and rangeK=[Kmin,Kmax] units of [RV rms])
-    Nsamples (int, optional): the number of injected planets in the 2D space (P, M) at a given orbital phase
-    Nphases (int, optional): the number of different orbital phases with which to inject a given planet in the 2D space (P, M). The phase is then spread evenly in [0, 2pi[. The total number of injection-recovery tests corresponds to Nsamples*Nphases.
+    inc_inject: orbital inclination with which to inject the planets [degrees]
+    Nsamples (int, optional): number of draws in the (P, M) 2D space
+    Nphases (int, optional): number of different orbital phases with which to inject a given planet in the 2D space (P, M). The phase is then spread evenly in [-pi, pi[. The total number of injection-recovery tests corresponds to Nsamples*Nphases.
     fapLevel (float, optional): the FAP threshold under which we consider a signal as significant in the GLS periodogram.
     """
     if type(rvFile)==str:
@@ -138,19 +141,19 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(
 
 def Stat_DataDL(output_file, percentage=95, nbins=15, axis_y_var='M'):
     """
-    Function for the computation of level curves of detection limit. Default is 95% detection limits.
+    Computes detection limit level curves. Default is 95% detection limits.
     
     Arguments
     ---------
     output_file (string): output file name of the planet injection-recovery tests
-    percentage (float): input percentage of detection (default=95%)
-    nbins (int): input number of Period bins onto which to compute the detection limits (default=20)
-    axis_y_var (string): the y-axis variable with which to compute the detection limits. Options are mass 'M' or RV semi-amplitude 'K' (default='M')
+    percentage (float, optional): percentage of detection required (default=95%)
+    nbins (int, optional): number of Period bins in which to compute the detection limits (default=15)
+    axis_y_var (string, optional): the y-axis variable with which to compute the detection limits. Options are mass 'M' or RV semi-amplitude 'K' (default='M')
     
     Output
     ------
-    binP: array of period values corresponding to the center of each bin
-    y_threshold: array of 'percentage'% detection limits for each period bin
+    binP: array of period values corresponding to the center of each period bin
+    y_threshold: array of 'percentage'% detection limits, one element per period bin
     """
     output = pd.read_pickle(output_file)
     P = np.array(output['P'])
@@ -200,133 +203,133 @@ def Stat_DataDL(output_file, percentage=95, nbins=15, axis_y_var='M'):
 # Copyright 2015 Jean-Baptiste Delisle
 # Licensed under the EUPL-1.2 or later
 # Adapted and last modified 12/11/2024
-def naf(
-  t,
-  f,
-  nfreqs=5,
-  circ=2 * np.pi,
-  tstep=None,
-  secant_xtol=1e-15,
-  secant_relftol=1,
-  secant_Nmax=10,
-  basis_maxprod=0.5,
-):
-    """NAFF algorithm (see Laskar, 2003)
-    t, f are arrays of time (equally spaced) and signal values.
-    nfreqs is the maximum desired number of frequencies in the decomposition.
-    Depending on the signal the algorithm may return less terms than nfreqs.
-    circ is the circumference of a unit circle (default is 2.pi but can be 360, 1, etc.)
-    tstep = is the time step. If not provided it is set to t[1]-t[0].
-    """
-    N = len(t)
-    N = N - N % 6
-    step = t[1] - t[0] if tstep is None else tstep
-    T = N / 2 * step
-    x = t[:N]
-    g = f[:N].astype(complex)
-    nf = nfreqs
-    freqs = np.empty(nf)
-    amps = np.empty(nf, dtype=complex)
-    vecs = np.empty((nf, N), dtype=complex)
-    basis = np.zeros((nf, nf), dtype=complex)
-    no_more_freq = False
-    for n in range(nf):
-        freqs[n], vecs[n, :], amps[n] = _naf_findmax(
-          x,
-          g * _naf_xi((x - x[0]) / T - 1),
-          step,
-          N,
-          secant_xtol,
-          secant_relftol,
-          secant_Nmax,
-        )
-        # Check if frequency has already been detected
-        for k in range(n):
-            basis[n, k] = _naf_prod(vecs[n, :] * _naf_xi((x - x[0]) / T - 1), vecs[k, :])
-            if abs(basis[n, k]) > basis_maxprod:
-                no_more_freq = True
-        # stop the algorithm if it is the case
-        if no_more_freq:
-            nf = n
-            freqs = freqs[:n]
-            amps = amps[:n]
-            basis = basis[:n, :n]
-            break
-        # completing orthonormal basis and projecting
-        # module of the orthogonal vector
-        mod = np.sqrt(1 - sum(abs(basis[n, k]) ** 2 for k in range(n)))
-        # complete basis matrix and nth vector
-        basis[n, n] = mod
-        vecs[n, :] = vecs[n, :] / mod
-        amps[n] = amps[n] / mod
-        for k in range(n):
-            vecs[n, :] -= basis[n, k] * vecs[k, :] / mod
-        g -= amps[n] * vecs[n, :]
-    # perform the basis change
-    amps = np.linalg.solve(basis.T, amps)
-    return (freqs * circ / (2 * np.pi), amps)
-
-
-def nafprint_header(fundnames, fundfreqs, outfile=None):
-    """Write the header of a naf output file
-    If outfile is not provided, the standard output is used
-    """
-    print('Fundamental frequencies', file=outfile)
-    for k in range(len(fundfreqs)):
-        print(fundnames[k] + ':', fundfreqs[k], file=outfile)
-
-
-def _naf_xi(t):
-    """Weight function for the NAFF algorithm (see Laskar, 2003)."""
-    return 1 + np.cos(np.pi * t)
-
-
-def _naf_findmax(t, f, step, N, xtol, relftol, Nmax):
-    """Find the maximum amplitude of the Fourier transform of f"""
-
-    # Derivative of the amplitude
-    def dAmp(nu):
-        einu = np.exp(1j * nu * t)
-        return 2 * np.real(1j * _naf_prod(f, einu) * np.conj(_naf_prod(t * f, einu)))
-
-    # ifft of f to find a starting value for the secant method
-    Amp = np.abs(np.fft.ifft(f))
-    # Frequencies given by the ifft
-    nus = -2 * np.pi / step * np.fft.fftfreq(N)
-    dnu = 2 * np.pi / step / N
-    # Frequency at the ifft maximum
-    nu0 = nus[np.argmax(Amp)]
-    # Derivative of amplitude
-    dA0 = dAmp(nu0)
-    # Find the zero of the derivative (maximum of amplitude)
-    if dA0 > 0:
-        nu = _naf_secant(dAmp, nu0 + dnu, nu0, xtol, relftol, Nmax)
-    else:
-        nu = _naf_secant(dAmp, nu0 - dnu, nu0, xtol, relftol, Nmax)
-    einut = np.exp(1j * nu * t)
-    return (nu, einut, _naf_prod(f, einut))
-
-
-def _naf_prod(f, g):
-    """Integral of f * conj(g)"""
-    return sum(f * np.conj(g)) / len(f)
-
-
-def _naf_secant(f, a0, b0, xtol, relftol, Nmax):
-    """Secant method to find the zero of f"""
-    a = a0
-    b = b0
-    fa = f(a0)
-    fb = f(b0)
-    N = 0
-    while fb != 0 and abs(a - b) > xtol and abs(fa / fb - 1) > relftol and Nmax > N:
-        c = b + (a - b) * fb / (fb - fa)
-        a = b
-        fa = fb
-        b = c
-        fb = f(b)
-        N += 1
-    return b
+#def naf(
+#  t,
+#  f,
+#  nfreqs=5,
+#  circ=2 * np.pi,
+#  tstep=None,
+#  secant_xtol=1e-15,
+#  secant_relftol=1,
+#  secant_Nmax=10,
+#  basis_maxprod=0.5,
+#):
+#    """NAFF algorithm (see Laskar, 2003)
+#    t, f are arrays of time (equally spaced) and signal values.
+#    nfreqs is the maximum desired number of frequencies in the decomposition.
+#    Depending on the signal the algorithm may return less terms than nfreqs.
+#    circ is the circumference of a unit circle (default is 2.pi but can be 360, 1, etc.)
+#    tstep = is the time step. If not provided it is set to t[1]-t[0].
+#    """
+#    N = len(t)
+#    N = N - N % 6
+#    step = t[1] - t[0] if tstep is None else tstep
+#    T = N / 2 * step
+#    x = t[:N]
+#    g = f[:N].astype(complex)
+#    nf = nfreqs
+#    freqs = np.empty(nf)
+#    amps = np.empty(nf, dtype=complex)
+#    vecs = np.empty((nf, N), dtype=complex)
+#    basis = np.zeros((nf, nf), dtype=complex)
+#    no_more_freq = False
+#    for n in range(nf):
+#        freqs[n], vecs[n, :], amps[n] = _naf_findmax(
+#          x,
+#          g * _naf_xi((x - x[0]) / T - 1),
+#          step,
+#          N,
+#          secant_xtol,
+#          secant_relftol,
+#          secant_Nmax,
+#        )
+#        # Check if frequency has already been detected
+#        for k in range(n):
+#            basis[n, k] = _naf_prod(vecs[n, :] * _naf_xi((x - x[0]) / T - 1), vecs[k, :])
+#            if abs(basis[n, k]) > basis_maxprod:
+#                no_more_freq = True
+#        # stop the algorithm if it is the case
+#        if no_more_freq:
+#            nf = n
+#            freqs = freqs[:n]
+#            amps = amps[:n]
+#            basis = basis[:n, :n]
+#            break
+#        # completing orthonormal basis and projecting
+#        # module of the orthogonal vector
+#        mod = np.sqrt(1 - sum(abs(basis[n, k]) ** 2 for k in range(n)))
+#        # complete basis matrix and nth vector
+#        basis[n, n] = mod
+#        vecs[n, :] = vecs[n, :] / mod
+#        amps[n] = amps[n] / mod
+#        for k in range(n):
+#            vecs[n, :] -= basis[n, k] * vecs[k, :] / mod
+#        g -= amps[n] * vecs[n, :]
+#    # perform the basis change
+#    amps = np.linalg.solve(basis.T, amps)
+#    return (freqs * circ / (2 * np.pi), amps)
+#
+#
+#def nafprint_header(fundnames, fundfreqs, outfile=None):
+#    """Write the header of a naf output file
+#    If outfile is not provided, the standard output is used
+#    """
+#    print('Fundamental frequencies', file=outfile)
+#    for k in range(len(fundfreqs)):
+#        print(fundnames[k] + ':', fundfreqs[k], file=outfile)
+#
+#
+#def _naf_xi(t):
+#    """Weight function for the NAFF algorithm (see Laskar, 2003)."""
+#    return 1 + np.cos(np.pi * t)
+#
+#
+#def _naf_findmax(t, f, step, N, xtol, relftol, Nmax):
+#    """Find the maximum amplitude of the Fourier transform of f"""
+#
+#    # Derivative of the amplitude
+#    def dAmp(nu):
+#        einu = np.exp(1j * nu * t)
+#        return 2 * np.real(1j * _naf_prod(f, einu) * np.conj(_naf_prod(t * f, einu)))
+#
+#    # ifft of f to find a starting value for the secant method
+#    Amp = np.abs(np.fft.ifft(f))
+#    # Frequencies given by the ifft
+#    nus = -2 * np.pi / step * np.fft.fftfreq(N)
+#    dnu = 2 * np.pi / step / N
+#    # Frequency at the ifft maximum
+#    nu0 = nus[np.argmax(Amp)]
+#    # Derivative of amplitude
+#    dA0 = dAmp(nu0)
+#    # Find the zero of the derivative (maximum of amplitude)
+#    if dA0 > 0:
+#        nu = _naf_secant(dAmp, nu0 + dnu, nu0, xtol, relftol, Nmax)
+#    else:
+#        nu = _naf_secant(dAmp, nu0 - dnu, nu0, xtol, relftol, Nmax)
+#    einut = np.exp(1j * nu * t)
+#    return (nu, einut, _naf_prod(f, einut))
+#
+#
+#def _naf_prod(f, g):
+#    """Integral of f * conj(g)"""
+#    return sum(f * np.conj(g)) / len(f)
+#
+#
+#def _naf_secant(f, a0, b0, xtol, relftol, Nmax):
+#    """Secant method to find the zero of f"""
+#    a = a0
+#    b = b0
+#    fa = f(a0)
+#    fb = f(b0)
+#    N = 0
+#    while fb != 0 and abs(a - b) > xtol and abs(fa / fb - 1) > relftol and Nmax > N:
+#        c = b + (a - b) * fb / (fb - fa)
+#        a = b
+#        fa = fb
+#        b = c
+#        fb = f(b)
+#        N += 1
+#    return b
 
   
 ################### HILL RADIUS
@@ -426,24 +429,139 @@ def OrbitCrossing(a, e):
     return orb_cross
 
 
+#################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
+#def Stability(KepParam, ML, Mstar, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=False):
+#    """Function for the dynamical evolution followed with stability estimation of the orbits.
+#    KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, lam, ecc, w, inc, Omega, Mass] where
+#        a is semi-major axis [AU]
+#        lam is mean longitude [rad]
+#        ecc is orbital eccentricity
+#        w is argument of perisatron [rad]
+#        inc is orbital inclination [[rad]
+#        Omega is longitude of ascending node [rad]
+#        Mass is planetary mass [M_Sun]
+#    Mstar: stellar mass [M_Sun]
+#    Nplanets: number of KNOWN planets (not counting the injected body)
+#    T: Total integration time
+#    dt: rebound integration timestep
+#    min_dist and max_dist: The minimum and maximum allowed distances, respectively. The former serves as close encounter criterion, the latter as escape criterion.
+#    Noutputs: the number of output times desired to compute the orbital stability. Default is 20000.
+#    NAFF_Thresh: The NAFF threshold above which the system is considered unstable. Default is 0. """
+##    Nbodies = int(Nplanets + 1) # The total number of bodies excluding the star, i.e. Nplanets + 1 injected planet
+#
+#    a = KepParam[0]
+#    phase = KepParam[1]
+#    e = KepParam[2]
+#    w = KepParam[3]
+#    inc = KepParam[4]
+#    O = KepParam[5]
+#    M = KepParam[6]
+#    Nbodies = len(a)
+#
+#    sim = rebound.Simulation()
+#    sim.add(m=Mstar)
+#
+#    if ML == True: # Mean Longitude is provided
+#        sim.add(m=M[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+#        q = int(1)
+#        while q < len(a):
+#            sim.add(primary=sim.particles[0], m=M[q], a=a[q], l=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
+#            q += 1
+#
+#    elif ML == False: # Mean Anomaly is provided
+#        sim.add(m=M[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+#        q = int(1)
+#        while q < len(a):
+#            sim.add(primary=sim.particles[0], m=M[q], a=a[q], M=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
+#            q += 1
+#
+#    sim.move_to_com()
+#    sim.dt = dt * 2*np.pi # Conversion to rebound units: 1yr = 2pi
+#    sim.integrator = "ias15"
+#    sim.exit_max_distance = max_dist
+#    sim.exit_min_distance = min_dist
+#
+#    if GR == True:
+#        ##*************** REBOUNDX PART *****************
+#        rebx = reboundx.Extras(sim)
+#        gr = rebx.load_force("gr")
+#        rebx.add_force(gr)
+#        gr.params["c"] = constants.C
+#        ##************************************************
+#
+#    eilambda = np.zeros((Nbodies, Noutputs))
+#    time = np.zeros(Noutputs)
+#    I = complex(0,1)
+#
+#    try:
+#        for j in range(Noutputs):
+#            t_output = (j+1) * T / Noutputs
+#            sim.integrate(t_output*2*np.pi)
+#            time[j] = t_output
+#
+#            for q in range(Nbodies):
+#                eilambda[q][j] = sim.particles[q+1].l # The mean longitude is retained at each output
+#                eilambda[q][j] = np.exp(I*eilambda[q][j])
+#
+#        ######### stability computation -- NAFF algorithm
+#        var_freq = np.zeros(Nbodies)
+#        t_NAFF = np.arange(1,int(Noutputs/2 + 1))
+#        Delta_t = time[0]
+#
+#        for i in range(Nbodies):
+#            freq1, amp1 = naf(t_NAFF, eilambda[i][:int(Noutputs/2)],1)
+#            freq1 = freq1 / Delta_t
+#            freq2, amp2 = naf(t_NAFF, eilambda[i][int(Noutputs/2):],1)
+#            freq2 = freq2 / Delta_t
+#            #################################################################################
+#            var_freq_1 = abs(freq2-freq1 - 1./(2*Delta_t)).item()
+#            var_freq_2 = abs(freq2-freq1).item()
+#            var_freq_3 = abs(freq2-freq1 + 1./(2*Delta_t)).item()
+#            delta_n = min(var_freq_1,var_freq_2,var_freq_3)
+#
+#            n = a[i]**(-1.5) * 2*np.pi * ((Mstar+M[i])/(1+mE_S))**0.5
+#
+#            var_freq[i] = np.log10(abs(delta_n/n))
+#
+#        NAFF_max = max(var_freq)
+#
+#        if NAFF_max < NAFF_Thresh:
+#            stab = 1.
+#        else:
+#            stab = 0.
+#
+#    except rebound.Escape:
+#        stab = 0.
+#
+#    except rebound.Encounter:
+#        stab = 0.
+#
+#    return stab
+
+
 ################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
-def Stability(KepParam, ML, Mstar, T, dt, min_dist, max_dist, Noutputs=int(20000), NAFF_Thresh=0., GR=False):
-    """Function for the dynamical evolution followed with stability estimation of the orbits.
-    KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, lam, ecc, w, inc, Omega, Mass] where
-        a is semi-major axis [AU]
-        lam is mean longitude [rad]
-        ecc is orbital eccentricity
-        w is argument of perisatron [rad]
-        inc is orbital inclination [[rad]
-        Omega is longitude of ascending node [rad]
-        Mass is planetary mass [M_Sun]
-    Mstar: stellar mass [M_Sun]
-    Nplanets: number of KNOWN planets (not counting the injected body)
-    T: Total integration time
-    dt: rebound integration timestep
-    min_dist and max_dist: The minimum and maximum allowed distances, respectively. The former serves as close encounter criterion, the latter as escape criterion.
-    Noutputs: the number of output times desired to compute the orbital stability. Default is 20000.
-    NAFF_Thresh: The NAFF threshold above which the system is considered unstable. Default is 0. """
+def Stability(KepParam, ML, Mstar, T, dt, min_dist, max_dist, max_drift_a=0.2, GR=False):
+    """
+    Numerical estimation of orbital stability via short-term integration.
+    
+    Arguments
+    ---------
+    KepParam: input Keplerian parameters. This is a 2D vector of the form: KepParam = [a, phase, ecc, w, inc, Omega, Mass] where
+        a : semi-major axis [AU]
+        phase : orbital phase. Can be either mean longitude or mean anomaly [rad]
+        ecc : orbital eccentricity
+        w : argument of perisatron [rad]
+        inc : orbital inclination [[rad]
+        Omega : longitude of ascending node [rad]
+        Mass : planetary mass [M_Sun]
+    ML (bool): True if the orbital phase is parametrised with the mean longitude, False for mean anomaly.
+    Mstar (float): stellar mass [M_Sun]
+    T (float): Total integration time [years]
+    dt (float): integration timestep [years]
+    min_dist and max_dist (floats): The minimum and maximum allowed distances, respectively. The former serves as close encounter criterion, the latter as escape criterion.
+    max_drift_a (float, optional): semi-major axis drift threshold beyond which the system is claimed unstable. This stability criterion is a relative drift measurement: drift = (a(t2)-a(t1)) / a(0). (Default=0.2, i.e. 20%)
+    GR (bool, optional): include the general relativity module if True (default=False)
+    """
 #    Nbodies = int(Nplanets + 1) # The total number of bodies excluding the star, i.e. Nplanets + 1 injected planet
     
     a = KepParam[0]
@@ -474,7 +592,9 @@ def Stability(KepParam, ML, Mstar, T, dt, min_dist, max_dist, Noutputs=int(20000
       
     sim.move_to_com()
     sim.dt = dt * 2*np.pi # Conversion to rebound units: 1yr = 2pi
-    sim.integrator = "ias15"
+    sim.integrator = "whfast"
+    sim.ri_whfast.corrector = 17
+    sim.ri_whfast.safe_mode = 0
     sim.exit_max_distance = max_dist
     sim.exit_min_distance = min_dist
     
@@ -486,43 +606,25 @@ def Stability(KepParam, ML, Mstar, T, dt, min_dist, max_dist, Noutputs=int(20000
         gr.params["c"] = constants.C
         ##************************************************
 
-    eilambda = np.zeros((Nbodies, Noutputs))
-    time = np.zeros(Noutputs)
-    I = complex(0,1)
+    Noutputs = int(2000)
+    a_simu = np.zeros((Nbodies, Noutputs))
 
     try:
         for j in range(Noutputs):
             t_output = (j+1) * T / Noutputs
             sim.integrate(t_output*2*np.pi)
-            time[j] = t_output
 
             for q in range(Nbodies):
-                eilambda[q][j] = sim.particles[q+1].l # The mean longitude is retained at each output
-                eilambda[q][j] = np.exp(I*eilambda[q][j])
+                a_simu[q][j] = sim.particles[q+1].a # The semi-major axis is retained at each output
                 
-        ######### stability computation -- NAFF algorithm
-        var_freq = np.zeros(Nbodies)
-        t_NAFF = np.arange(1,int(Noutputs/2 + 1))
-        Delta_t = time[0]
-
+        ######### stability computation -- drift in semi-major axis
+        var_a = np.zeros(Nbodies)
         for i in range(Nbodies):
-            freq1, amp1 = naf(t_NAFF, eilambda[i][:int(Noutputs/2)],1)
-            freq1 = freq1 / Delta_t
-            freq2, amp2 = naf(t_NAFF, eilambda[i][int(Noutputs/2):],1)
-            freq2 = freq2 / Delta_t
-            #################################################################################
-            var_freq_1 = abs(freq2-freq1 - 1./(2*Delta_t)).item()
-            var_freq_2 = abs(freq2-freq1).item()
-            var_freq_3 = abs(freq2-freq1 + 1./(2*Delta_t)).item()
-            delta_n = min(var_freq_1,var_freq_2,var_freq_3)
-
-            n = a[i]**(-1.5) * 2*np.pi * ((Mstar+M[i])/(1+mE_S))**0.5
+            var_a[i] = np.abs((np.median(a_simu[i][int(Noutputs/2):]) - np.median(a_simu[i][:int(Noutputs/2)])) / a[i])
             
-            var_freq[i] = np.log10(abs(delta_n/n))
+        drift_a = max(var_a)
 
-        NAFF_max = max(var_freq)
-
-        if NAFF_max < NAFF_Thresh:
+        if drift_a < max_drift_a:
             stab = 1.
         else:
             stab = 0.
@@ -538,18 +640,26 @@ def Stability(KepParam, ML, Mstar, T, dt, min_dist, max_dist, Noutputs=int(20000
 
 #############################
 ################### MAIN CODE
-def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=1, Noutputs=20000, NAFF_Thresh=0., GR=False):
+def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.2, GR=False):
     """
     Computation of the dynamical detection limits
     
     Arguments
     ---------
-    shift (int): index indicating at which value of the period one computes the dynamical detection limits (for parallel computations)
-    Nplanets (int): the number of known planets in the system (not counting for the injected one)
-    param_file (string): name of the parameters file
-    DataDrivenLimitsFile (string): name of the data-driven detection limits file
-    output_file (string): name of the extensive output file
-    DetectLim0File (string): name of the dynamical detection limits output file
+    shift (int): period bin index (needed for parallel computations)
+    output_file1 (string): name of the full output file, containing all the (P, M) tested combinations
+    output_file2 (string): name of the dynamical detection limits file
+    keplerian_table (dict): table of planetary Keplerian parameters
+    D95 (2d array): arrays of periods and masses defining the 95% data-driven detection limits
+    inc_inject (float): orbital inclination of the injected planet [deg]
+    Mstar (float): stellar mass [M_Sun]
+    T (float, optional): total integration time [years] (default=Pouter*500000)
+    dt (float, optional): integration timestep [years] (default=Pinner/50)
+    min_dist (float, optional): Criterion on close-encounter [Hill_radius] (default=3)
+    max_dist (float, optional): Criterion on escape [AU] (default=5)
+    Nphases (int, optional): Number of orbital phases per injected (P, K) at which to compute the orbital stability (default=4)
+    max_drift_a (float, optional): stability threshold based on maximum relative drift in semi-major axis of the planets (default=0.2, i.e. 20%)
+    GR (bool): General relativity correction included if GR=True, False otherwise. (default=False)
     """
         
     AllOutput = output_file1
@@ -582,9 +692,9 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     table_keplerian = table_keplerian.sort_values(by='semimajor') # ---------- Sort the parameters by increasing a
     
     if dt is None:
-        dt = np.min(table_keplerian['period'])/(365.25*40) # By default, P_inner/40 in [yr]
+        dt = np.min(table_keplerian['period'])/(365.25*50) # By default, P_inner/50 in [yr]
     if T is None:
-        T = 1e5*np.max(table_keplerian['period'])/365.25 # By default, 100k * P_outer [yr]
+        T = 5e5*np.max(table_keplerian['period'])/365.25 # By default, 1M * P_outer [yr]
 
     P = np.array(table_keplerian['period'])/365.25              # [yr]
     K = np.array(table_keplerian['semi-amp'])
@@ -626,7 +736,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
             stab_rate_numeric = 0
             for j in range(Nphases):
                 phase[index0] = phases_inject[j]
-                stab_rate_numeric += Stability(params, ML, Mstar, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR) # stab_rate_numeric is a binary number: 0 = unstable, 1 = stable
+                stab_rate_numeric += Stability(params, ML, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR) # stab_rate_numeric is a binary number: 0 = unstable, 1 = stable
     
             stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
             
@@ -661,7 +771,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                         stab_rate_numeric = 0.
                         for j in range(Nphases):
                             phase[index0] = phases_inject[j]
-                            stab_rate_numeric += Stability(params, ML, Mstar, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR)
+                            stab_rate_numeric += Stability(params, ML, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
 
                         stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
                 else:
@@ -695,7 +805,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                         stab_rate_numeric = 0.
                         for j in range(Nphases):
                             phase[index0] = phases_inject[j]
-                            stab_rate_numeric += Stability(params, ML, Mstar, T, dt, min_dist, max_dist, Noutputs, NAFF_Thresh, GR)
+                            stab_rate_numeric += Stability(params, ML, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
                         stab_rate = round((stab_rate_numeric / Nphases) * 100., 2)
                 else:
                     stab_rate = 100
@@ -730,6 +840,21 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
 #############################
 ################### Long integration
 def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Noutputs=1000, GR=False):
+    """
+    Long-term numerical integration of a specific system solution.
+
+    Arguments
+    ---------
+    output_file (string): name of the file that will contain the outputs of the numerical integration
+    keplerian_table (array of floats): orbital parameters of the planets in the system
+    Mstar (float): stellar mass [M_Sun]
+    T (float, optional): total integration time [years] (default=Pouter*1e6)
+    dt (float, optional): integration timestep [years] (default=Pinner/100)
+    min_dist (float, optional): minimal approach (close encounter) threshold [Hill radius] (default=3)
+    max_dist (float, optional): maximal distance (escape) threshold [AU] (default=5)
+    Noutputs (int, optional): number of output timesteps saved in a file (default=1000)
+    GR (bool, optional): include general relativity module (default=False)
+    """
 
     table_keplerian = keplerian_table.copy()
 
@@ -808,4 +933,3 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
         
     except rebound.Encounter:
         print(' [INFO] --Long term stability-- Simulation stopped! Close encounter. ')
-

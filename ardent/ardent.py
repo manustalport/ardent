@@ -29,8 +29,9 @@ class ARDENT_tableXY(object):
         self.yerr = np.array(yerr) # RV uncertainties in m/s
         self.baseline = np.round(np.max(self.x) - np.min(self.x),0)
         self.planets = []
-        self.ARD_AddStar()
-        self.ARD_Set_output_dir()
+        self.ARDENT_AddStar()
+        self.ARDENT_Set_output_dir()
+
 
     def ARDENT_Set_output_dir(self,output_dir=None):
         if output_dir is None:
@@ -44,15 +45,26 @@ class ARDENT_tableXY(object):
             
         self.tag = self.output_dir+self.starname+'_'
 
+
     def ARDENT_Plot(self,new=True):
         if new:
             fig = plt.figure(figsize=(5,4))
         plt.errorbar(self.x,self.y,yerr=self.yerr,color='k',capsize=0,marker='o',ls='',alpha=0.3)
+        
+        
+    def ARDENT_AddStar(self,mass=1.00,starname='Sun'):
+        self.starname = starname
+        self.mstar = mass
+
 
     def ARDENT_ResetPlanets(self):
         self.planets = []
 
+
     def ARDENT_ImportPlanets(self,filename):
+        """
+        Import the parameters of the known planets (mass and orbital elements) from an imput file.
+        """
         param_names = np.genfromtxt(filename, usecols=(0), dtype=None, encoding=None)
         param_values = np.genfromtxt(filename, usecols=(1))
         self.mstar = param_values[param_names=='Mstar'][0]
@@ -82,20 +94,17 @@ class ARDENT_tableXY(object):
             mass,semi_axis = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
 
             self.planets.append([p, semi_axis, mean_long, mean_anomaly, e, omega, inc, asc_node, k, mass])
-        self.ARD_ShowPlanets()
-
-
-    def ARDENT_AddStar(self,mass=1.00,starname='Sun'):
-        self.starname = starname
-        self.mstar = mass
+        self.ARDENT_ShowPlanets()
 
 
     def ARDENT_AddPlanets(self, p=365.25, semi_major=np.nan, mean_long=0.0, mean_anomaly=np.nan, e=0.0, omega=0.0, inc=90.0, asc_node=0.0, k=0.10, mass=np.nan):
         """
-        Either a mean_long or mean_anomaly parameters are needed
-        Args:
+        Add a planet to ARDENT, by specifying its mass and orbital elements. Either a mean_long or mean_anomaly parameters are needed.
+        
+        Arguments
+        ---------
             p : orbital period [days]
-            semi_major : semi_major axis in AU
+            semi_major : semi_major axis [AU]
             mean_long : mean longitude [deg]
             mean_anomaly : mean anomaly [deg]
             e : orbital eccentricity
@@ -103,7 +112,7 @@ class ARDENT_tableXY(object):
             inc : orbital inclination [deg]
             asc_node : longitude of the ascending node [deg]
             k : RV semi-amplitude [m/s]
-            mass : planetary mass in Earth mass
+            mass : planetary mass [M_Earth]
         """
 
         if (semi_major!=semi_major)|(mass!=mass):
@@ -118,11 +127,13 @@ class ARDENT_tableXY(object):
             print('\n [INFO] Semi-major axis calculated to be %.2f AU'%(semi_major))
 
         self.planets.append([p, semi_major, mean_long, mean_anomaly, e, omega, inc, asc_node, k, mass])
-        self.ARD_ShowPlanets()
+        self.ARDENT_ShowPlanets()
 
 
     def ARDENT_ShowPlanets(self):
-    
+        """
+        Display the parameters of all the planets currently saved in ARDENT.
+        """
         printed_table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
         printed_table.index = ['planet %.0f'%(i) for i in range(1,1+len(self.planets))]
         print('\n [INFO] Planet parameters: \n')
@@ -131,6 +142,9 @@ class ARDENT_tableXY(object):
 
 
     def ARDENT_PlotPlanets(self, new=True, savefig=True, legend=True):
+        """
+        Plot the planetary orbits.
+        """
     
         table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
         phases = np.linspace(-np.pi,np.pi,1000)
@@ -159,9 +173,10 @@ class ARDENT_tableXY(object):
             else:
                 plt.plot(X[0],X[1],label=r'%.2f $M_{Jup}$'%(mi*mE_J))
 
-        plt.plot(np.sin(phases),np.cos(phases),color='k',ls='-.',lw=1)
-        plt.axhline(y=0,color='k',ls=':',lw=1,alpha=0.2)
-        plt.axvline(x=0,color='k',ls=':',lw=1,alpha=0.2)
+#        plt.plot(np.sin(phases),np.cos(phases),color='k',ls='-.',lw=1)
+#        plt.axhline(y=0,color='k',ls=':',lw=1,alpha=0.2)
+#        plt.axvline(x=0,color='k',ls=':',lw=1,alpha=0.2)
+        plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         if legend:
             plt.legend(loc=2)
         plt.xlabel('X [AU]', size='large')
@@ -175,8 +190,8 @@ class ARDENT_tableXY(object):
 
         hmin[1] = interp1d(hmin[0], hmin[1], kind='linear', bounds_error=False, fill_value=0)(hmax[0])
 
-        plt.fill_between(hmax[0],hmin[1],hmax[1],alpha=0.1,color='g')
-        plt.fill_between(hmax[0],-hmin[1],-hmax[1],alpha=0.1,color='g')
+        plt.fill_between(hmax[0],hmin[1],hmax[1],alpha=0.1,color='g', linewidth=0.0)
+        plt.fill_between(hmax[0],-hmin[1],-hmax[1],alpha=0.1,color='g', linewidth=0.0)
         if savefig:
             ax = plt.gca() ; xlim = ax.get_xlim()[1]
             plt.savefig(self.tag+'Planetary_system.png', format='png', dpi = 300)
@@ -187,17 +202,68 @@ class ARDENT_tableXY(object):
             plt.ylim(-xlim,xlim)
 
 
-    def ARDENT_Plot_MapUpperMass(self, x_au=1.25, detection_limit='RV', interp='cubic'):
+#    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile=None, DynDLfile=None, x_au=1.25, detection_limit='RV', interp='zero'):
+#
+#        mstar = self.mstar
+#
+#        if detection_limit=='RV':
+#            if InjectionRecoveryFile is None:
+#                statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=10, axis_y_var='M')
+#            elif InjectionRecoveryFile is not None:
+#                statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=95, nbins=10, axis_y_var='M')
+#        else:
+#            if DynDLfile is None:
+#                P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
+#                M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
+#                statistic = [P,M_stb]
+#            elif DynDLfile is not None:
+#                P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
+#                M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(2))
+#                statistic = [P,M_stb]
+#
+#        a = (statistic[0]/365.25)**(2./3.) * ((mstar+statistic[1]*mE_S)/(1.+mE_S))**(1./3.)
+#
+#        grid = np.linspace(-x_au,x_au,1000)
+#        Gx,Gy = np.meshgrid(grid,grid)
+#        R = np.ravel(np.sqrt(Gx**2+Gy**2))
+#        M = interp1d(a, statistic[1], kind=interp, bounds_error=False, fill_value=np.nan)(R)
+#        M = np.reshape(M,(1000,1000))
+#
+#        plt.rc('font', size=12)
+#        plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=16,cmap='gnuplot')
+#        ax = plt.colorbar(pad=0)
+#        ax.ax.set_ylabel('95$\%%$ Mass limit detection', size='large')
+
+
+    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile=None, DynDLfile=None, x_au=1.25, detection_limit='RV', interp='zero'):
+        """
+        Plot the grid of mass detection limits in the orbital plane.
+        """
 
         mstar = self.mstar
 
-        if detection_limit=='RV':
-            statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=10, axis_y_var='M')
-        else:
-            P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
-            M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
-            statistic = [P,M_stb]
+        if InjectionRecoveryFile is None:
+            statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95)
+            Mmax = max(statistic[1])
+        elif InjectionRecoveryFile is not None:
+            statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=95)
+            Mmax = max(statistic[1])
 
+#        if detection_limit=='RV':
+#            if InjectionRecoveryFile is None:
+#                statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95)
+#            elif InjectionRecoveryFile is not None:
+#                statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=95)
+        if detection_limit!='RV':
+            if DynDLfile is None:
+                P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
+                M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
+                statistic = [P,M_stb]
+            elif DynDLfile is not None:
+                P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
+                M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(2))
+                statistic = [P,M_stb]
+                
         a = (statistic[0]/365.25)**(2./3.) * ((mstar+statistic[1]*mE_S)/(1.+mE_S))**(1./3.)
 
         grid = np.linspace(-x_au,x_au,1000)
@@ -207,24 +273,34 @@ class ARDENT_tableXY(object):
         M = np.reshape(M,(1000,1000))
 
         plt.rc('font', size=12)
-        plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=16,cmap='gnuplot')
+        plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=round(Mmax),cmap='gnuplot')
         ax = plt.colorbar(pad=0)
-        ax.ax.set_ylabel('95-percent Mass limit detection')
+        ax.ax.set_ylabel('95$\%%$ Mass limit detection', size='large')
 
 
-    def ARDENT_FinalPlot(self,interp='cubic'):
+    def ARDENT_FinalPlot(self, InjectionRecoveryFile=None, DynDLfile=None):#, interp='zero'):
+        """
+        Plot the mass detection limits in the orbital plane, together with the planetary orbits of the known planets. This function produces and compares plots of data-driven and dynamical detection limits.
+        
+        Arguments (optional)
+        ---------
+        InjectionRecoveryFile (string): output file name of the injection-recovery tests
+        DynDLfile (string): name of the file containing the dynamical detection limits
+        """
         
         fig = plt.figure(figsize=(14,7))
         #plt.title(self.starname)
         plt.rc('font', size=12)
         
         plt.subplot(1,2,1)
-        self.ARD_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV',interp=interp)
+        self.ARDENT_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV',interp='zero')
+        plt.title('RV detection limits', size='large')
 
         plt.subplot(1,2,2)
-        self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab',interp=interp)
+        self.ARDENT_PlotPlanets(new=False,savefig=False, legend=False)
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV+Stab',interp='zero')
+        plt.title('RV + stability detection limits', size='large')
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
         plt.savefig(self.tag+'Summary_analysis.png', format='png', dpi = 300)
@@ -233,14 +309,16 @@ class ARDENT_tableXY(object):
 
         zoom = 1.00
         plt.subplot(1,2,1)
-        self.ARD_PlotPlanets(new=False,savefig=False,legend=False)
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV',interp=interp)
+        self.ARDENT_PlotPlanets(new=False,savefig=False,legend=False)
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV',interp='zero')
         plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
+        plt.title('RV detection limits', size='large')
 
         plt.subplot(1,2,2)
-        self.ARD_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARD_Plot_MapUpperMass(x_au=xlim,detection_limit='RV+Stab',interp=interp)
+        self.ARDENT_PlotPlanets(new=False,savefig=False, legend=False)
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV+Stab',interp='zero')
         plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
+        plt.title('RV + stability detection limits', size='large')
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
         plt.savefig(self.tag+'Summary_analysis_zoom.png', format='png', dpi = 300)
@@ -248,10 +326,11 @@ class ARDENT_tableXY(object):
 
     def ARDENT_DetectionLimitRV_auto(self, rangeP=None, fap_level=0.01):
         """
-        Detection limits (data-driven) computation with default settings.
+        Automatic, system-independent computation of data-driven detection limits for RV data.
+        
         Arguments (optional)
         ---------
-        rangeP (list of floats): The range of orbital periods [days] within which to compute the detection limits.
+        rangeP (list of floats): The range of orbital periods [days] within which to compute the detection limits. Default is 55% of the RV timeseries baseline.
         fap_level (float): The maximum False Alarm Probability (FAP) required to detect a RV signal.
         """
         
@@ -265,7 +344,7 @@ class ARDENT_tableXY(object):
         print(' [INFO] RMS of the RV vector = %.2f m/s'%(rms))
 
         #first iteration with sparse sampling
-        self.ARD_DetectionLimitRV(rangeP=rangeP, fap_level=fap_level, Nsamples=300, Nphases=6)
+        self.ARDENT_DetectionLimitRV(rangeP=rangeP, fap_level=fap_level, Nsamples=300, Nphases=6)
         file1 = self.output_file_DL
 
         statistic = ardf.Stat_DataDL(file1, percentage=95, nbins=4, axis_y_var='K')
@@ -281,7 +360,7 @@ class ARDENT_tableXY(object):
         print(' [INFO] Grid of semi-amplitude between: ',rangeK, ' [rms]')
     
         #second iteration with dense sampling
-        self.ARD_DetectionLimitRV(rangeP=rangeP, rangeK=rangeK, fap_level=fap_level, Nsamples=700, Nphases=6)
+        self.ARDENT_DetectionLimitRV(rangeP=rangeP, rangeK=rangeK, fap_level=fap_level, Nsamples=700, Nphases=6)
         file2 = self.output_file_DL
 
         print(' [INFO] Merging of the low and high resolutions files...')
@@ -300,23 +379,24 @@ class ARDENT_tableXY(object):
             'rangeK':np.hstack([f1['rangeK'],f2['rangeK']]),
             'inc_inject':f2['inc_inject']
              }
-        output_file = file2.split('Data-drivenDL')[0]+'Data-drivenDLmerged'+file2.split('Data-drivenDL')[-1]
+        output_file = file2.split('InjectRecovTests')[0]+'InjectRecovTestsMerged'+file2.split('InjectRecovTests')[-1]
         pickle.dump(f,open(output_file,'wb'))
         self.output_file_DL = output_file
 
         plt.figure(figsize=(5,10))
         plt.subplot(2,1,1)
-        self.ARD_Plot_DataDL(nbins=10, percentage=[95,50], axis_y_var='M', new=False)
+        self.ARDENT_Plot_DataDL(nbins=10, percentage=[95,50], axis_y_var='M', new=False)
         plt.subplot(2,1,2)
-        self.ARD_Plot_DataDL(nbins=10, percentage=[95,50], axis_y_var='K', new=False, legend=False)
+        self.ARDENT_Plot_DataDL(nbins=10, percentage=[95,50], axis_y_var='K', new=False, legend=False)
         plt.subplots_adjust(left=0.13,right=0.95,hspace=0.25,top=0.97,bottom=0.07)
         plt.tight_layout()
         plt.savefig(output_file.replace('.p','.png'), format='png', dpi = 300)
 
 
-    def ARDENT_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.2], inc_inject=90., fap_level=0.01, Nsamples=500, Nphases=4):
+    def ARDENT_DetectionLimitRV(self, rangeP=[2., 600.], rangeK=[0.1, 1.2], inc_inject=90., fap_level=0.01, Nsamples=2000, Nphases=4):
         """
         RV detection limits computation (data-driven).
+        
         Arguments (optional)
         ---------
         rangeP (list of floats): Range of orbital periods [days] within which to compute the detection limits
@@ -332,19 +412,21 @@ class ARDENT_tableXY(object):
         output_dir = self.output_dir
 
         version = int(0)
-        output_file = self.tag+'Data-drivenDL_%d.p'%version
+        output_file = self.tag+'InjectRecovTests_%d.p'%version
         while os.path.exists(output_file):
             version += 1
-            output_file = self.tag+'Data-drivenDL_%d.p'%version
+            output_file = self.tag+'InjectRecovTests_%d.p'%version
 
         self.output_file_DL = output_file
         ardf.DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples, Nphases, fap_level)
         
-        self.ARD_Plot_DataDL(output_file, percentage=[95,50], nbins=6)
+        self.ARDENT_Plot_DataDL(output_file, percentage=[95,50], nbins=6)
 
 
     def ARDENT_Plot_DataDL(self, output_file=None, percentage=[95], nbins=6, axis_y_var='M', new=True, legend=True):
-        """Plot the detection limits obtained from the .ARD_DetectionLimitRV() method"""
+        """
+        Plot the detection limits obtained from the ARDENT_DetectionLimitRV() method
+        """
 
         if output_file is None:
             output_file = self.output_file_DL
@@ -380,8 +462,8 @@ class ARDENT_tableXY(object):
             planets2 = planets2.loc[(planets2['period']>np.min(P))&(planets2['period']<np.max(P))]
             variable = np.array(planets2[keyword])
             variable[variable>1.05*np.max(M)] = np.max(M)
-            plt.scatter(planets2['period'],variable,color='k',marker='|',s=20,zorder=9)
-            plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=50,zorder=10)
+            plt.scatter(planets2['period'],variable,color='k',marker='^',s=40,zorder=9)
+            plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=100,zorder=10)
 
         plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
         
@@ -409,31 +491,31 @@ class ARDENT_tableXY(object):
         plt.savefig(fig_title, format='png', dpi = 300)
     
 
-    def ARDENT_DetectionLimitStab(self, NlocalCPU=1, DataDLfile=None, param_file=None, nbins=15, integration_time=None, dt=None, Nphases=4, min_dist=3, max_dist=5, Noutputs=20000, NAFFthr=0, GR=False, fine_grid=True, relaunch=False):
+    def ARDENT_DetectionLimitStab(self, NlocalCPU=1, InjectionRecoveryFile=None, param_file=None, nbins=15, integration_time=None, dt=None, Nphases=4, min_dist=3, max_dist=5, max_drift_a=0.2, GR=False, fine_grid=True, relaunch=False):
         """
-        Function computing the dynamical detection limits (i.e. detection limits that include the constraint of orbital stability).
+        Function computing the dynamical detection limits (i.e. detection limits that include the constraint of orbital stability), starting from the data-driven detection limits.
+        
         Arguments (optional)
         ---------
-        NlocalCPU (int): Number of CPUs to dedicate to the computation of dynamical detection limits. Use NlocalCPU=0 to run the code on an external cluster
-        DataDLfile (string): Filename of the data-driven detection limits
-        param_file (string): Filename of the parameter file
-        nbins (int): The number of period values with which to compute the detection limits (both data-driven and dynamical DL)
-        integration_time (float): Total integration time used to compute the orbital stability [yr]
-        dt (foat): Integration timestep [yr]
-        Nphases (int): Number of orbital phases per injected (P, K) at which to compute the orbital stability.
-        min_dist (float): Criterion on close-encounter [Hill_radius]
-        max_dist (float): Criterion on escape [AU]
-        Noutputs (int): Number of output times with which to compute the NAFF chaos indicator. Value recommended: Noutputs=20000
-        NAFFthr (float): NAFF threshold of stability. Any planetary system with NAFF > NAFFthr is comnsidered as unstable.
-        GR (bool): General relativity correction included if GR=True, False otherwise.
-        fine_grid (bool): Compute a denser grid of detection limits around the periastron and apastron of each planet in the system (known + injected). Default is True.
-        relaunch (bool): Set to True to overwrite any old run with identical settings, False otherwise.
+        NlocalCPU (int): Number of CPUs to dedicate to the computation of dynamical detection limits. Use NlocalCPU=0 to run the code on an external cluster. (default=1)
+        InjectionRecoveryFile (string): Filename of the data-driven injection-recovery tests
+        param_file (string): Name of the input file containing numerical integration parameters (in replacement of specifying them as arguments of this function)
+        nbins (int): The number of period values with which to compute the data-driven and dynamical detection limits (default=15)
+        integration_time (float): Total integration time used to compute the orbital stability [yr] (default=Pouter*500000)
+        dt (foat): Integration timestep [yr] (default=Pinner/50)
+        Nphases (int): Number of orbital phases per injected (P, K) at which to compute the orbital stability (default=4)
+        min_dist (float): Criterion on close-encounter [Hill_radius] (default=3)
+        max_dist (float): Criterion on escape [AU] (default=5)
+        max_drift_a (float): Maximum relative drift allowed in semi-major axis of the planets for the system to be classified stable (default=0.2, i.e. 20%)
+        GR (bool): General relativity correction included if GR=True, False otherwise. (default=False)
+        fine_grid (bool): Compute a denser grid of detection limits around the periastron and apastron of each planet in the system. (default=True)
+        relaunch (bool): Set to True to overwrite any old run with identical settings, False otherwise. (default=False)
         """
     
         mstar = self.mstar
         table_keplerian = self.planets_table.copy()
         
-        if DataDLfile is None:
+        if InjectionRecoveryFile is None:
             subP_means, M95 = ardf.Stat_DataDL(self.output_file_DL, nbins=nbins, percentage=95)
             output = pd.read_pickle(self.output_file_DL)
             inc_inject = output['inc_inject']
@@ -448,11 +530,11 @@ class ARDENT_tableXY(object):
                 output_file = self.output_file_STDL1
                 self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
         else:
-            subP_means, M95 = ardf.Stat_DataDL(DataDLfile, nbins=nbins, percentage=95)
-            output = pd.read_pickle(DataDLfile)
+            subP_means, M95 = ardf.Stat_DataDL(InjectionRecoveryFile, nbins=nbins, percentage=95)
+            output = pd.read_pickle(InjectionRecoveryFile)
             inc_inject = output['inc_inject']
             
-            split_filename = DataDLfile.split('_')[-1]
+            split_filename = InjectionRecoveryFile.split('_')[-1]
             version = int(split_filename.split('.')[0])
             self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
             output_file = self.output_file_STDL1
@@ -506,8 +588,8 @@ class ARDENT_tableXY(object):
                     max_dist = param_values[index]
                 if param_names[index] == 'Noutputs':
                     Noutputs = int(param_values[index])
-                if param_names[index] == 'NAFFthr':
-                    NAFFthr = param_values[index]
+                if param_names[index] == 'max_drift_a':
+                    max_drift_a = param_values[index]
                 if param_names[index] == 'GR':
                     GR = int(param_values[index])
                     
@@ -516,19 +598,19 @@ class ARDENT_tableXY(object):
                 if relaunch:
                     print(' [INFO] An old processing has been found. Overwriting the output files (relaunch=True). ')
                     
-                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
+                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR) for shift in range(N))
                     
                 else:
                     print(' [INFO] An old processing has been found, and relaunch=False. First delete or rename the output files below prior to launch a new processing, or set relaunch to True: \n %s \n %s \n '%(self.output_file_STDL1, self.output_file_STDL2))
                     
             else:
-                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
+                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR) for shift in range(N))
 
         elif NlocalCPU == 0: #cluster
             ##### On the cluster, the code always overwrites potential old processings with the same name.
             shift = int(sys.argv[1])
 #                    n_jobs = int(sys.argv[2])
-            ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR)
+            ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
 
 
 #        if os.path.exists(self.output_file_STDL1) and os.path.exists(self.output_file_STDL2):
@@ -557,7 +639,8 @@ class ARDENT_tableXY(object):
 
     def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None):
         """
-        Plot the detection limits, both data-driven limits and dynamical detection limits.
+        Plot the RV detection limits, both data-driven and dynamical detection limits.
+        
         Arguments (optional)
         ---------
         DataDLfile (string): filename of the data-driven detection limits file
@@ -582,8 +665,11 @@ class ARDENT_tableXY(object):
         
         fig = plt.figure(figsize=(5,4))
 
-        plt.plot(P_dataDL, M_dataDL, color='lightgray', lw=2, marker='o', mfc='white', ms=6, mew=1.5, zorder=2, alpha=1, label='w/o stability') #color='xkcd:mahogany'darkgray goldenrod
-        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=2, marker='o', ms=4, zorder=10, label='w stability') #color='xkcd:fire engine red'firebrick
+#        plt.plot(P_dataDL, M_dataDL, color='xkcd:mahogany', alpha=0.6, lw=2, marker='o', mfc='white', ms=6, mew=1.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
+#        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=2, marker='o', ms=4, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
+        plt.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
+        plt.plot(P, M_stb, ls='-', color='xkcd:fire engine red', lw=1, marker='o', ms=6, mfc='yellow', mew=1, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
+        plt.fill_between(x= P, y1= M_stb, facecolor= "xkcd:fire engine red", lw=0., alpha=0.1)
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
 
@@ -605,6 +691,23 @@ class ARDENT_tableXY(object):
         
         
     def ARDENT_TestStability(self, P_inject, m_inject, ML_inject=0., MA_inject=None, e_inject=0., w_inject=0., inc_inject=90., ascnode_inject=0., param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
+        """
+        Test the orbital stability of a unique solution. Typically, this function is used to test the stability of a planet candidate with specific orbital parameters.
+        
+        Arguments
+        ---------
+        P_inject (float): orbital period [days] of the additional, candidate planet
+        m_inject (float): mass [M_Earth] of the additional, candidate planet
+        ML_inject, MA_inject, e_inject, w_inject, inc_inject, ascnode_inject (float, optional): mean longitude (default=0), mean anomaly (None), orbital eccentricity (0), argument of periastron (0), orbital inclination (90), and ascending node (0) of the candidate planet
+        param_file (string, optional): name of the input initial conditions file (default=None). If this file is used, there is no need to specify the same parameters as arguments below.
+        integration_time (float, optional): total integration time [years] (default=1e6 x Pouter)
+        dt (float, optional): integration timestep [years] (default=Pinner / 100)
+        min_dist (float, optional): minimal approach (close encounter) threshold [Hill radius] (default=3)
+        max_dist (float, optional): maximal distance (escape) threshold [AU] (default=5)
+        Noutputs (int, optional): number of output timesteps saved in a file (default=1000)
+        GR (bool, optional): include the general relativity module if True (default=False)
+        relaunch (bool, optional): Set to True to overwrite any old run with identical settings, False otherwise.
+        """
     
         mstar = self.mstar
         table_keplerian = self.planets_table.copy()
@@ -623,14 +726,23 @@ class ARDENT_tableXY(object):
                 ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
                         
             else:
-                print(' [INFO] An old processing has been found, and relaunch=False. First delete the output file below prior to launch a new simulation: \n\n ' + self.output_evolution)
+                print(' [INFO] An old processing has been found, and relaunch=False. First rename or delete the output file below prior to launch a new simulation: \n\n ' + self.output_evolution)
                 
         else:
             ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
         
 
-
     def ARDENT_PlotOrbitalElements(self, P_inject, m_inject, output_file=None, Noutputs=1000):
+        """
+        Plot the orbital elements versus time of a planetary system including the additional planet candidate to test (semi-major axis, orbital eccentricity and argument of periastron)
+        
+        Arguments
+        ---------
+        P_inject (float): orbital period [days] of the additional, candidate planet
+        m_inject (float): mass [M_Earth] of the additional, candidate planet
+        output_file (string, optional): Name of the output file generated by the function 'ARDENT_TestStability'
+        Noutputs (int, optional): number of output timesteps saved in a file (default=1000)
+        """
     
         table_keplerian = self.planets_table.copy()
         Nbodies = len(table_keplerian) + 1 # The number of known planets + the injected one
@@ -660,6 +772,8 @@ class ARDENT_tableXY(object):
                 w[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+3))
 
         print(' [INFO] Preparing plot of the temporal evolution of the orbital elements. ')
+        tmin = 0. - (time[-1]/50.)
+        tmax = time[-1] * 51 / 50
         fig = plt.figure(figsize=(14,4))
         plt.title(self.starname + ' -- P_inject: ' + str(P_inject) + ' ; m_inject: ' + str(m_inject))
         plt.rc('font', size=12)
@@ -670,7 +784,7 @@ class ARDENT_tableXY(object):
             plt.plot(time, a[:,i], lw=1.8, alpha=0.8, color=colors[i], label='P=%.2f d'%P[i])
             plt.xlabel('Time [yr]', size='x-large')
             plt.ylabel(r'a [AU]', size='x-large')
-            plt.xlim(0,time[-1])
+            plt.xlim(tmin,tmax)
             plt.legend() #loc='upper left'
 
         plt.subplot(1,3,2)
@@ -678,17 +792,15 @@ class ARDENT_tableXY(object):
             plt.plot(time, ecc[:,i], lw=1.8, alpha=0.8, color=colors[i])
             plt.xlabel('Time [yr]', size='x-large')
             plt.ylabel(r'Ecc', size='x-large')
-            plt.xlim(0,time[-1])
+            plt.xlim(tmin,tmax)
 
         plt.subplot(1,3,3)
         for i in range(Nbodies):
             plt.plot(time, w[:,i], lw=1.8, alpha=0.8, color=colors[i])
             plt.xlabel('Time [yr]', size='x-large')
             plt.ylabel(r'$\omega$ [rad]', size='x-large')
-            plt.xlim(0,time[-1])
+            plt.xlim(tmin,tmax)
 
         plt.tight_layout()
         plt.subplots_adjust(wspace=0.25)
         plt.savefig(self.tag+'LongTermEvolution.png', format='png', dpi = 300)
-
-
