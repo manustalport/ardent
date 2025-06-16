@@ -694,7 +694,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     if dt is None:
         dt = np.min(table_keplerian['period'])/(365.25*50) # By default, P_inner/50 in [yr]
     if T is None:
-        T = 5e5*np.max(table_keplerian['period'])/365.25 # By default, 1M * P_outer [yr]
+        T = 1e5*np.max(table_keplerian['period'])/365.25 # By default, 100k * P_outer [yr]
 
     P = np.array(table_keplerian['period'])/365.25              # [yr]
     K = np.array(table_keplerian['semi-amp'])
