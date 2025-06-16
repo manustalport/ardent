@@ -7,6 +7,7 @@ import ardent_functions as ardf
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
+from PyAstronomy.pyTiming import pyPeriod
 from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
@@ -44,17 +45,46 @@ class ARDENT_tableXY(object):
             os.system('mkdir ' + output_dir)
             
         self.tag = self.output_dir+self.starname+'_'
-
-
-    def ARDENT_Plot(self,new=True):
-        if new:
-            fig = plt.figure(figsize=(5,4))
-        plt.errorbar(self.x,self.y,yerr=self.yerr,color='k',capsize=0,marker='o',ls='',alpha=0.3)
         
         
     def ARDENT_AddStar(self,mass=1.00,starname='Sun'):
         self.starname = starname
         self.mstar = mass
+
+
+    def ARDENT_Plot(self, xUnits='BJD-2457000', yUnits='m/s', rangePeriodogram=[2.,200.], fapLevel=0.01, new=True):
+        if new:
+            fig = plt.figure(figsize=(11,3.5))
+        plt.rc('font', size=12)
+        
+        ##### RV residuals timeseries plot
+        plt.subplot(1,2,1)
+        RVtimespan = (max(self.x) - min(self.x))
+        tmin = min(self.x) - RVtimespan / 20
+        tmax = max(self.x) + RVtimespan / 20
+        plt.errorbar(self.x,self.y,yerr=self.yerr,color='k',capsize=0,marker='o',ls='',alpha=0.3)
+        plt.xlabel('Time [' + xUnits + ']', size='large')
+        plt.ylabel('RV [' + yUnits + ']', size='large')
+        plt.xlim(tmin,tmax)
+        plt.title(self.starname + ' RV timeseries', size='large')
+
+        ##### Periodogram plot
+        plt.subplot(1,2,2)
+        clp = pyPeriod.Gls((self.x, self.y), Pbeg=rangePeriodogram[0], Pend=rangePeriodogram[1])
+        p_RV = clp.power
+        plevel_RV = clp.powerLevel(fapLevel)
+        plt.plot(1/clp.freq, p_RV, 'k', lw=1.2, rasterized=True, alpha=0.3)
+        plt.axhline(plevel_RV, c='k', lw=1.0, linestyle='--', zorder=2, label='FAP ' + str(round(fapLevel*100)) + '%')
+        plt.xlim(rangePeriodogram[0], rangePeriodogram[1])
+        plt.xscale('log')
+        plt.ylabel('Power', size='large')
+        plt.xlabel('Period [days]', size='large')
+        plt.legend()
+        plt.title(self.starname + ' GLS periodogram', size='large')
+
+        plt.tight_layout()
+        plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
+        plt.savefig(self.tag+'RVresiduals.png', format='png', dpi = 300)
 
 
     def ARDENT_ResetPlanets(self):
@@ -410,6 +440,8 @@ class ARDENT_tableXY(object):
         rvFile = {'jdb':self.x,'rv':self.y,'rv_err':self.yerr}
         Mstar = self.mstar
         output_dir = self.output_dir
+        
+        print(self.tag)
 
         version = int(0)
         output_file = self.tag+'InjectRecovTests_%d.p'%version
@@ -423,7 +455,7 @@ class ARDENT_tableXY(object):
         self.ARDENT_Plot_DataDL(output_file, percentage=[95,50], nbins=6)
 
 
-    def ARDENT_Plot_DataDL(self, output_file=None, percentage=[95], nbins=6, axis_y_var='M', new=True, legend=True):
+    def ARDENT_Plot_DataDL(self, output_file=None, percentage=[50,95], nbins=6, axis_y_var='M', new=True, legend=True):
         """
         Plot the detection limits obtained from the ARDENT_DetectionLimitRV() method
         """
@@ -675,10 +707,11 @@ class ARDENT_tableXY(object):
 
         planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
         planets = planets.loc[(planets['period']>np.min(P))&(planets['period']<np.max(P))]
+#        planets = planets.loc[(planets['period']>2.0)&(planets['period']<600.0)]
         variable = np.array(planets['mass'])
         variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
-        plt.scatter(planets['period'],variable,color='k',marker='|',s=20,zorder=9)
-        plt.scatter(planets['period'],planets['mass'],color='k',marker='*',s=50,zorder=10)
+        plt.scatter(planets['period'],variable,color='k',marker='^',s=30,zorder=20)
+        plt.scatter(planets['period'],planets['mass'],color='k',marker='*',s=80,zorder=22)
 
         plt.rc('font', size=12)
         plt.xlabel('Period [d]', size='x-large')
@@ -804,3 +837,4 @@ class ARDENT_tableXY(object):
         plt.tight_layout()
         plt.subplots_adjust(wspace=0.25)
         plt.savefig(self.tag+'LongTermEvolution.png', format='png', dpi = 300)
+
