@@ -53,6 +53,9 @@ class ARDENT_tableXY(object):
 
 
     def ARDENT_Plot(self, xUnits='BJD-2457000', yUnits='m/s', rangePeriodogram=[2.,200.], fapLevel=0.01, new=True):
+        """
+        Plots the residual RV timeseries and generalised Lomb-Scargle periodogram.
+        """
         if new:
             fig = plt.figure(figsize=(11,3.5))
         plt.rc('font', size=12)
@@ -101,11 +104,18 @@ class ARDENT_tableXY(object):
         conv = 180/np.pi
 
         nb_planet = np.sum([p.split('_')[0]=='P' for p in param_names])
-        phase_param = np.sum([p.split('_')[0]=='ML' for p in param_names])
-        if phase_param > 0:
-            ML = True
-        else:
-            ML = False
+        phase_ML = np.sum([p.split('_')[0]=='ML' for p in param_names])
+        phase_MA = np.sum([p.split('_')[0]=='MA' for p in param_names])
+        phase_peritime = np.sum([p.split('_')[0]=='peritime' for p in param_names])
+#        if phase_param > 0:
+#            ML = True
+#            peri_time = False
+#        elif phase_param == 0 and phase_param2 > 0:
+#            ML = False
+#            peri_time = True
+#        else:
+#            ML = False
+#            peri_time = False
             
         for i in np.arange(1,1+nb_planet):
             p = param_values[param_names=='P_%.0f'%(i)][0]
@@ -114,20 +124,32 @@ class ARDENT_tableXY(object):
             omega = param_values[param_names=='w_%.0f'%(i)][0] # [deg]
             inc = param_values[param_names=='inc_%.0f'%(i)][0] # [deg]
             asc_node = param_values[param_names=='asc_node_%.0f'%(i)][0] # [deg]
-            if ML == True:
+            
+            mean_long = np.nan
+            mean_anomaly = np.nan
+            peri_time = np.nan
+            if phase_ML > 0:
                 mean_long = param_values[param_names=='ML_%.0f'%(i)][0] # [deg]
-                mean_anomaly = np.nan
-            else:
+            if phase_MA > 0:
                 mean_anomaly = param_values[param_names=='MA_%.0f'%(i)][0] # [deg]
-                mean_long = np.nan
+            if phase_peritime > 0:
+                peri_time = param_values[param_names=='peritime_%.0f'%(i)][0] # [deg]
+            if phase_ML == 0 and phase_MA == 0 and phase_peritime == 0:
+                print('[ERROR] The orbital phases of the planets must be indicated.')
+#            if ML == True:
+#                mean_long = param_values[param_names=='ML_%.0f'%(i)][0] # [deg]
+#                mean_anomaly = np.nan
+#            else:
+#                mean_anomaly = param_values[param_names=='MA_%.0f'%(i)][0] # [deg]
+#                mean_long = np.nan
 
             mass,semi_axis = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
 
-            self.planets.append([p, semi_axis, mean_long, mean_anomaly, e, omega, inc, asc_node, k, mass])
+            self.planets.append([p, semi_axis, mean_long, mean_anomaly, peri_time, e, omega, inc, asc_node, k, mass])
         self.ARDENT_ShowPlanets()
 
 
-    def ARDENT_AddPlanets(self, p=365.25, semi_major=np.nan, mean_long=0.0, mean_anomaly=np.nan, e=0.0, omega=0.0, inc=90.0, asc_node=0.0, k=0.10, mass=np.nan):
+    def ARDENT_AddPlanets(self, p=365.25, semi_major=np.nan, mean_long=0.0, mean_anomaly=np.nan, peri_time=np.nan, e=0.0, omega=0.0, inc=90.0, asc_node=0.0, k=0.10, mass=np.nan):
         """
         Add a planet to ARDENT, by specifying its mass and orbital elements. Either a mean_long or mean_anomaly parameters are needed.
         
@@ -137,6 +159,7 @@ class ARDENT_tableXY(object):
             semi_major : semi_major axis [AU]
             mean_long : mean longitude [deg]
             mean_anomaly : mean anomaly [deg]
+            peri_time : time of pericenter passage
             e : orbital eccentricity
             omega : argument of periastron [deg]
             inc : orbital inclination [deg]
@@ -156,7 +179,7 @@ class ARDENT_tableXY(object):
             semi_major = semi_major_comp
             print('\n [INFO] Semi-major axis calculated to be %.2f AU'%(semi_major))
 
-        self.planets.append([p, semi_major, mean_long, mean_anomaly, e, omega, inc, asc_node, k, mass])
+        self.planets.append([p, semi_major, mean_long, mean_anomaly, peri_time, e, omega, inc, asc_node, k, mass])
         self.ARDENT_ShowPlanets()
 
 
@@ -164,7 +187,7 @@ class ARDENT_tableXY(object):
         """
         Display the parameters of all the planets currently saved in ARDENT.
         """
-        printed_table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
+        printed_table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass'])
         printed_table.index = ['planet %.0f'%(i) for i in range(1,1+len(self.planets))]
         print('\n [INFO] Planet parameters: \n')
         print(printed_table)
@@ -176,7 +199,7 @@ class ARDENT_tableXY(object):
         Plot the planetary orbits.
         """
     
-        table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
+        table = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass'])
         phases = np.linspace(-np.pi,np.pi,1000)
         phases2 = np.linspace(0,np.pi,1000)
         
@@ -265,7 +288,7 @@ class ARDENT_tableXY(object):
 #        ax.ax.set_ylabel('95$\%%$ Mass limit detection', size='large')
 
 
-    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile=None, DynDLfile=None, x_au=1.25, detection_limit='RV', interp='zero'):
+    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile, DynDLfile, MassUnits, percentage, x_au=1.25, detection_limit='RV', interp='zero'):
         """
         Plot the grid of mass detection limits in the orbital plane.
         """
@@ -273,10 +296,10 @@ class ARDENT_tableXY(object):
         mstar = self.mstar
 
         if InjectionRecoveryFile is None:
-            statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95)
+            statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=percentage)
             Mmax = max(statistic[1])
         elif InjectionRecoveryFile is not None:
-            statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=95)
+            statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=percentage)
             Mmax = max(statistic[1])
 
 #        if detection_limit=='RV':
@@ -295,6 +318,10 @@ class ARDENT_tableXY(object):
                 statistic = [P,M_stb]
                 
         a = (statistic[0]/365.25)**(2./3.) * ((mstar+statistic[1]*mE_S)/(1.+mE_S))**(1./3.)
+        
+        if MassUnits == 'Jupiter':
+            statistic[1] = statistic[1] * mE_J # Conversion from Earth to Jupiter masses
+            Mmax = Mmax * mE_J
 
         grid = np.linspace(-x_au,x_au,1000)
         Gx,Gy = np.meshgrid(grid,grid)
@@ -305,10 +332,10 @@ class ARDENT_tableXY(object):
         plt.rc('font', size=12)
         plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=round(Mmax),cmap='gnuplot')
         ax = plt.colorbar(pad=0)
-        ax.ax.set_ylabel('95$\%%$ Mass limit detection', size='large')
+        ax.ax.set_ylabel(str(percentage) + '$\%%$ Mass limit detection', size='large')
 
 
-    def ARDENT_FinalPlot(self, InjectionRecoveryFile=None, DynDLfile=None):#, interp='zero'):
+    def ARDENT_FinalPlot(self, InjectionRecoveryFile=None, DynDLfile=None, MassUnits='Earth', percentage=95):
         """
         Plot the mass detection limits in the orbital plane, together with the planetary orbits of the known planets. This function produces and compares plots of data-driven and dynamical detection limits.
         
@@ -316,6 +343,8 @@ class ARDENT_tableXY(object):
         ---------
         InjectionRecoveryFile (string): output file name of the injection-recovery tests
         DynDLfile (string): name of the file containing the dynamical detection limits
+        MassUnits (string): mass units with which to plot the detection limits. Can be 'Earth' (default) or 'Jupiter'.
+        percentage (float): detection percentage with which to plot the mass detection limits (default=95)
         """
         
         fig = plt.figure(figsize=(14,7))
@@ -324,12 +353,12 @@ class ARDENT_tableXY(object):
         
         plt.subplot(1,2,1)
         self.ARDENT_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV',interp='zero')
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV')
         plt.title('RV detection limits', size='large')
 
         plt.subplot(1,2,2)
         self.ARDENT_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV+Stab',interp='zero')
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV+Stab')
         plt.title('RV + stability detection limits', size='large')
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
@@ -340,13 +369,13 @@ class ARDENT_tableXY(object):
         zoom = 1.00
         plt.subplot(1,2,1)
         self.ARDENT_PlotPlanets(new=False,savefig=False,legend=False)
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV',interp='zero')
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV')
         plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
         plt.title('RV detection limits', size='large')
 
         plt.subplot(1,2,2)
         self.ARDENT_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, x_au=xlim,detection_limit='RV+Stab',interp='zero')
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV+Stab')
         plt.xlim(-zoom,zoom) ; plt.ylim(-zoom,zoom)
         plt.title('RV + stability detection limits', size='large')
 
@@ -374,7 +403,7 @@ class ARDENT_tableXY(object):
         print(' [INFO] RMS of the RV vector = %.2f m/s'%(rms))
 
         #first iteration with sparse sampling
-        self.ARDENT_DetectionLimitRV(rangeP=rangeP, fap_level=fap_level, Nsamples=300, Nphases=6)
+        self.ARDENT_DetectionLimitRV(rangeP=rangeP, fap_level=fap_level, Nsamples=600, Nphases=6)
         file1 = self.output_file_DL
 
         statistic = ardf.Stat_DataDL(file1, percentage=95, nbins=4, axis_y_var='K')
@@ -390,7 +419,7 @@ class ARDENT_tableXY(object):
         print(' [INFO] Grid of semi-amplitude between: ',rangeK, ' [rms]')
     
         #second iteration with dense sampling
-        self.ARDENT_DetectionLimitRV(rangeP=rangeP, rangeK=rangeK, fap_level=fap_level, Nsamples=700, Nphases=6)
+        self.ARDENT_DetectionLimitRV(rangeP=rangeP, rangeK=rangeK, fap_level=fap_level, Nsamples=1000, Nphases=6)
         file2 = self.output_file_DL
 
         print(' [INFO] Merging of the low and high resolutions files...')
@@ -455,9 +484,125 @@ class ARDENT_tableXY(object):
         self.ARDENT_Plot_DataDL(output_file, percentage=[95,50], nbins=6)
 
 
-    def ARDENT_Plot_DataDL(self, output_file=None, percentage=[50,95], nbins=6, axis_y_var='M', new=True, legend=True):
+#    def ARDENT_Plot_DataDL(self, output_file=None, percentage=[50,95], nbins=6, axis_x_var='P', axis_y_var='M', MassUnits='Earth', new=True, legend=True):
+#        """
+#        Plot the detection limits obtained from the ARDENT_DetectionLimitRV() method
+#
+#        Arguments (optional)
+#        ---------
+#        output_file (string): output file name of the planet injection-recovery tests
+#        percentage (float or array of floats): detection percentage at which to compute the detection limits (default=[50,95])
+#        nbins (int): number of Period bins in which to compute the detection limits (default=6)
+#        axis_x_var (string): x-axis of the detection limits plot. Can be either the period 'P' (default) or semi-major axis 'a'.
+#        axis_y_var (string): y-axis of the detection limits plot. Either mass 'M' (default) or RV semi-amplitude 'K'.
+#        MassUnits (string): mass units in which to plot the detection limits. Used together with axis_y_var='M'. Can be either 'Earth' (default) or 'Jupiter'.
+#        new (bool): if True, the plot is saved in the output directory. (default=True)
+#        legend (bool): if True, add a legend to the plot. (default=True)
+#        """
+#
+#        if output_file is None:
+#            output_file = self.output_file_DL
+#
+#        planets = self.planets_table.copy()
+#
+#        output_dir = os.path.dirname(output_file)+'/'
+#        output = pd.read_pickle(output_file)
+#        Mstar = output['Mstar']
+#        P = output['P']
+#        xlabel = 'Period [d]'
+#        if axis_x_var == 'a':
+#            mp = output['M']
+#            a = (P/365.25)**(2./3.) * ((Mstar+mp*mE_S)/(1.+mE_S))**(1./3.)
+#            xlabel = 'semi-maj axis [AU]'
+#        M = output[axis_y_var]
+#        detect_rate = output['detect_rate']
+#        Nphases = output['Nphases']
+#
+#        if axis_y_var!='M':
+#            ylabel = 'K [m/s]'
+#            keyword = 'semi-amp'
+#        else:
+#            keyword = 'mass'
+#            if MassUnits == 'Earth':
+#                ylabel = 'Mass [M$_{\oplus}$]'
+#            elif MassUnits == 'Jupiter':
+#                ylabel = 'Mass [M$_{Jup}$]'
+#                M = M * mE_J # Conversion to Jupiter masses if required
+#
+#        detect_rate = detect_rate * 100.
+#        if Nphases < 8:
+#            cmap = plt.get_cmap('gnuplot', Nphases)
+#        else:
+#            cmap = plt.get_cmap('gnuplot', 8)
+#
+#        if new:
+#            fig = plt.figure(figsize=(6,4))
+#        plt.title(self.starname)
+#        if planets is not None:
+#            planets2 = planets.copy()
+#            if keyword == 'mass' and MassUnits == 'Jupiter': # Conversion of the planet mass to Jupiter masses if required
+#                planets2[keyword] = planets2[keyword] * mE_J
+#
+#            if axis_x_var == 'P':
+#                planets2 = planets2.loc[(planets2['period']>np.min(P))&(planets2['period']<np.max(P))]
+#                variable = np.array(planets2[keyword])
+#                variable[variable>1.05*np.max(M)] = np.max(M)
+#                plt.scatter(planets2['period'],variable,color='k',marker='^',s=40,zorder=9)
+#                plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=100,zorder=10)
+#            if axis_x_var == 'a':
+#                planets2 = planets2.loc[(planets2['semimajor']>np.min(a))&(planets2['semimajor']<np.max(a))]
+#                variable = np.array(planets2[keyword])
+#                variable[variable>1.05*np.max(M)] = np.max(M)
+#                plt.scatter(planets2['semimajor'],variable,color='k',marker='^',s=40,zorder=9)
+#                plt.scatter(planets2['semimajor'],planets2[keyword],color='k',marker='*',s=100,zorder=10)
+#
+#        if axis_x_var == 'P':
+#            plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
+#        if axis_x_var == 'a':
+#            plt.scatter(a, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
+#
+#        cmap2 = plt.get_cmap('gnuplot', 100)
+#        norm = mcolors.Normalize(vmin=0, vmax=100)
+#        sm = ScalarMappable(cmap=cmap2, norm=norm)
+#        for n,p in enumerate(percentage):
+#            subP_means, M95 = ardf.Stat_DataDL(output_file, percentage=p, nbins=nbins, axis_y_var=axis_y_var)
+#            if axis_x_var == 'a':
+#                subP_means = (subP_means/365.25)**(2./3.) * ((Mstar+M95*mE_S)/(1.+mE_S))**(1./3.)
+#            if axis_y_var == 'M' and MassUnits == 'Jupiter': # Conversion of the planet mass to Jupiter masses if required
+#                M95 = M95 * mE_J
+#            plt.plot(subP_means, M95, color=sm.to_rgba(p),label=r'%.0f $\%%$'%(p),marker='o',markeredgecolor='k')
+#
+#        if legend:
+#            plt.legend(loc={'M':2,'K':4}[axis_y_var])
+#        plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
+#        plt.xscale('log')
+#        plt.ylim(0, 1.05*max(M))
+#        cb = plt.colorbar(pad=0., ticks=[0.,25., 50., 75., 100.])
+#        cb.set_label(label=r'Detection rate [$\%$]', size='large')
+#        plt.rc('font', size=12)
+#        plt.xlabel(xlabel, size='large')
+#        plt.ylabel(ylabel, size='large')
+#        plt.tick_params(labelsize=12)
+#        plt.tight_layout()
+#
+#        fig_title = output_file.replace('.p', '_'+axis_y_var+'vs'+axis_x_var+'.png')
+#        plt.savefig(fig_title, format='png', dpi = 300)
+#
+
+    def ARDENT_Plot_DataDL(self, output_file=None, percentage=[50,95], nbins=6, axis_x_var='P', axis_y_var='M', MassUnits='Earth', new=True, legend=True):
         """
         Plot the detection limits obtained from the ARDENT_DetectionLimitRV() method
+        
+        Arguments (optional)
+        ---------
+        output_file (string): output file name of the planet injection-recovery tests
+        percentage (float or array of floats): detection percentage at which to compute the detection limits (default=[50,95])
+        nbins (int): number of Period bins in which to compute the detection limits (default=6)
+        axis_x_var (string): x-axis of the detection limits plot. Can be either the period 'P' (default) or semi-major axis 'a'.
+        axis_y_var (string): y-axis of the detection limits plot. Either mass 'M' (default) or RV semi-amplitude 'K'.
+        MassUnits (string): mass units in which to plot the detection limits. Used together with axis_y_var='M'. Can be either 'Earth' (default) or 'Jupiter'.
+        new (bool): if True, the plot is saved in the output directory. (default=True)
+        legend (bool): if True, add a legend to the plot. (default=True)
         """
 
         if output_file is None:
@@ -467,18 +612,32 @@ class ARDENT_tableXY(object):
 
         output_dir = os.path.dirname(output_file)+'/'
         output = pd.read_pickle(output_file)
-        P = output['P']
-        M = output[axis_y_var]
+        Mstar = output['Mstar']
         detect_rate = output['detect_rate']
         Nphases = output['Nphases']
-        Mstar = output['Mstar']
-
-        if axis_y_var!='M':
-            ylabel = 'K [m/s]'
-            keyword = 'semi-amp'
-        else:
-            ylabel = 'Mass [M$_{\oplus}$]'
-            keyword = 'mass'
+        
+        xvar = output['P']
+        xlabel = 'Period [d]'
+        keyword_x = 'period'
+        if axis_x_var == 'a':
+            mp = output['M']
+            xvar = (xvar/365.25)**(2./3.) * ((Mstar+mp*mE_S)/(1.+mE_S))**(1./3.)
+            xlabel = 'semi-maj axis [AU]'
+            keyword_x = 'semimajor'
+            
+#        yvar = output[axis_y_var]
+        ylabel = 'K [m/s]'
+        keyword_y = 'semi-amp'
+        unit = 1
+        if axis_y_var == 'M':
+            keyword_y = 'mass'
+            if MassUnits == 'Earth':
+                ylabel = 'Mass [M$_{\oplus}$]'
+            elif MassUnits == 'Jupiter':
+                ylabel = 'Mass [M$_{Jup}$]'
+                unit = mE_J
+#                yvar = yvar * mE_J # Conversion to Jupiter masses if required
+        yvar = output[axis_y_var] * unit # Conversion to Jupiter masses if required
 
         detect_rate = detect_rate * 100.
         if Nphases < 8:
@@ -491,37 +650,47 @@ class ARDENT_tableXY(object):
         plt.title(self.starname)
         if planets is not None:
             planets2 = planets.copy()
-            planets2 = planets2.loc[(planets2['period']>np.min(P))&(planets2['period']<np.max(P))]
-            variable = np.array(planets2[keyword])
-            variable[variable>1.05*np.max(M)] = np.max(M)
-            plt.scatter(planets2['period'],variable,color='k',marker='^',s=40,zorder=9)
-            plt.scatter(planets2['period'],planets2[keyword],color='k',marker='*',s=100,zorder=10)
+            planets2[keyword_y] = planets2[keyword_y] * unit # Conversion of the planet mass to Jupiter masses if required
+            planets2 = planets2.loc[(planets2[keyword_x]>np.min(xvar))&(planets2[keyword_x]<np.max(xvar))]
+            variable = np.array(planets2[keyword_y])
+            variable[variable>1.05*np.max(yvar)] = np.max(yvar)
+            plt.scatter(planets2[keyword_x],variable,color='k',marker='^',s=40,zorder=9)
+            plt.scatter(planets2[keyword_x],planets2[keyword_y],color='k',marker='*',s=100,zorder=10)
 
-        plt.scatter(P, M, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
-        
+        plt.scatter(xvar, yvar, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
+
         cmap2 = plt.get_cmap('gnuplot', 100)
         norm = mcolors.Normalize(vmin=0, vmax=100)
         sm = ScalarMappable(cmap=cmap2, norm=norm)
         for n,p in enumerate(percentage):
             subP_means, M95 = ardf.Stat_DataDL(output_file, percentage=p, nbins=nbins, axis_y_var=axis_y_var)
+            if axis_x_var == 'a':
+                if axis_y_var == 'K':
+                    mp, a = ardf.AmpStar(Mstar, subP_means, M95)
+                    subP_means = a
+                else:
+                    subP_means = (subP_means/365.25)**(2./3.) * ((Mstar+M95*mE_S)/(1.+mE_S))**(1./3.)
+            M95 = M95 * unit
             plt.plot(subP_means, M95, color=sm.to_rgba(p),label=r'%.0f $\%%$'%(p),marker='o',markeredgecolor='k')
 
         if legend:
             plt.legend(loc={'M':2,'K':4}[axis_y_var])
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
-        plt.ylim(0, 1.05*max(M))
+        plt.ylim(0, 1.05*max(yvar))
         cb = plt.colorbar(pad=0., ticks=[0.,25., 50., 75., 100.])
         cb.set_label(label=r'Detection rate [$\%$]', size='large')
         plt.rc('font', size=12)
-        plt.xlabel('Period [d]', size='large')
+        plt.xlabel(xlabel, size='large')
         plt.ylabel(ylabel, size='large')
         plt.tick_params(labelsize=12)
         plt.tight_layout()
         
-        fig_title = output_file.replace('.p', '_'+axis_y_var+'vsP.png')
+        fig_title = output_file.replace('.p', '_'+axis_y_var+'vs'+axis_x_var+'.png')
         plt.savefig(fig_title, format='png', dpi = 300)
     
+
+
 
     def ARDENT_DetectionLimitStab(self, NlocalCPU=1, InjectionRecoveryFile=None, param_file=None, nbins=15, integration_time=None, dt=None, Nphases=4, min_dist=3, max_dist=5, max_drift_a=0.2, GR=False, fine_grid=True, relaunch=False):
         """
@@ -669,7 +838,7 @@ class ARDENT_tableXY(object):
 #                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
 
 
-    def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None):
+    def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None, MassUnits='Earth', axis_x_var='P'):
         """
         Plot the RV detection limits, both data-driven and dynamical detection limits.
         
@@ -677,6 +846,8 @@ class ARDENT_tableXY(object):
         ---------
         DataDLfile (string): filename of the data-driven detection limits file
         DynDLfile (string): filename of the dynamical detection limits file
+        MassUnits (string): mass units with which to plot the detection limits. Can be 'Earth' (default) or 'Jupiter'.
+        axis_x_var (string): x-axis of the detection limits plot. Can be either the period 'P' (default) or semi-major axis 'a'.
         """
         if DynDLfile is None and DataDLfile is None:
             P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
@@ -695,8 +866,25 @@ class ARDENT_tableXY(object):
         P = np.array(P)[indexes]
         M_stb = np.array(M_stb)[indexes]
         
-        fig = plt.figure(figsize=(5,4))
+        keyword_x = 'period'
+        xlabel = 'Period [d]'
+        if axis_x_var == 'a':
+            P = (P/365.25)**(2./3.) * ((self.mstar+M_stb*mE_S)/(1.+mE_S))**(1./3.)
+            P_dataDL = (P_dataDL/365.25)**(2./3.) * ((self.mstar+M_dataDL*mE_S)/(1.+mE_S))**(1./3.)
+            keyword_x = 'semimajor'
+            xlabel = 'semi-maj axis [AU]'
+#            xvar = (xvar/365.25)**(2./3.) * ((Mstar+mp*mE_S)/(1.+mE_S))**(1./3.)
 
+        if MassUnits == 'Jupiter':
+            unit = mE_J # a conversion factor to have the mass in the right unit
+            ylabel = 'Mass [M$_{Jup}$]'
+        else:
+            unit = 1 # by default, masses are expressed in M_Earth
+            ylabel = 'Mass [M$_{\oplus}$]'
+        M_stb = M_stb * unit
+        M_dataDL = M_dataDL * unit
+        
+        fig = plt.figure(figsize=(5,4))
 #        plt.plot(P_dataDL, M_dataDL, color='xkcd:mahogany', alpha=0.6, lw=2, marker='o', mfc='white', ms=6, mew=1.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
 #        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=2, marker='o', ms=4, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
         plt.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
@@ -705,25 +893,25 @@ class ARDENT_tableXY(object):
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
 
-        planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','ecc','periastron','inc','asc_node','semi-amp','mass'])
-        planets = planets.loc[(planets['period']>np.min(P))&(planets['period']<np.max(P))]
+        planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass'])
+        planets = planets.loc[(planets[keyword_x]>np.min(P))&(planets[keyword_x]<np.max(P))]
 #        planets = planets.loc[(planets['period']>2.0)&(planets['period']<600.0)]
-        variable = np.array(planets['mass'])
+        variable = np.array(planets['mass']) * unit
         variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
-        plt.scatter(planets['period'],variable,color='k',marker='^',s=30,zorder=20)
-        plt.scatter(planets['period'],planets['mass'],color='k',marker='*',s=80,zorder=22)
+        plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=30,zorder=20)
+        plt.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='*',s=80,zorder=22)
 
         plt.rc('font', size=12)
-        plt.xlabel('Period [d]', size='x-large')
-        plt.ylabel(r'Mass [M$_{\oplus}$]', size='x-large')
+        plt.xlabel(xlabel, size='x-large')
+        plt.ylabel(ylabel, size='x-large')
         plt.tick_params(labelsize=12)
         plt.legend(loc='upper left')
         plt.tight_layout()
-        plt.ylim(0,np.max(M_dataDL)+1)
+        plt.ylim(0,np.max(M_dataDL)+np.max(M_dataDL)/20)
         plt.savefig(self.tag+'FinalDetectionLimits.png', format='png', dpi = 300)
         
         
-    def ARDENT_TestStability(self, P_inject, m_inject, ML_inject=0., MA_inject=None, e_inject=0., w_inject=0., inc_inject=90., ascnode_inject=0., param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
+    def ARDENT_TestStability(self, P_inject, m_inject, ML_inject=0., MA_inject=None, peritime_inject=None, e_inject=0., w_inject=0., inc_inject=90., ascnode_inject=0., param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
         """
         Test the orbital stability of a unique solution. Typically, this function is used to test the stability of a planet candidate with specific orbital parameters.
         
@@ -731,7 +919,7 @@ class ARDENT_tableXY(object):
         ---------
         P_inject (float): orbital period [days] of the additional, candidate planet
         m_inject (float): mass [M_Earth] of the additional, candidate planet
-        ML_inject, MA_inject, e_inject, w_inject, inc_inject, ascnode_inject (float, optional): mean longitude (default=0), mean anomaly (None), orbital eccentricity (0), argument of periastron (0), orbital inclination (90), and ascending node (0) of the candidate planet
+        ML_inject, MA_inject, peritime_inject, e_inject, w_inject, inc_inject, ascnode_inject (float, optional): mean longitude (default=0), mean anomaly (None), pericenter time (None), orbital eccentricity (0), argument of periastron (0), orbital inclination (90), and ascending node (0) of the candidate planet
         param_file (string, optional): name of the input initial conditions file (default=None). If this file is used, there is no need to specify the same parameters as arguments below.
         integration_time (float, optional): total integration time [years] (default=1e6 x Pouter)
         dt (float, optional): integration timestep [years] (default=Pinner / 100)
@@ -746,7 +934,7 @@ class ARDENT_tableXY(object):
         table_keplerian = self.planets_table.copy()
         
         a_inject = (P_inject/365.25)**(2./3.) * ((mstar + m_inject*mE_S)/(1+mE_S))**(1./3.) # [AU]
-        injected_planet = np.array([P_inject,a_inject,ML_inject,MA_inject,e_inject,w_inject,inc_inject,ascnode_inject,np.nan,m_inject])
+        injected_planet = np.array([P_inject,a_inject,ML_inject,MA_inject,peritime_inject,e_inject,w_inject,inc_inject,ascnode_inject,np.nan,m_inject])
         table_keplerian.loc[len(table_keplerian)] = injected_planet
         table_keplerian = table_keplerian.sort_values(by='semimajor')
 
@@ -790,8 +978,8 @@ class ARDENT_tableXY(object):
             w = np.zeros((Noutputs, Nbodies))
             for i in range(Nbodies):
                 a[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+1))
-                ecc[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+2))
-                w[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+3))
+                ecc[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+3))
+                w[:,i] = np.genfromtxt(self.output_evolution, skip_header=2, usecols=(i*6+4))
                 
         else:
             time = np.genfromtxt(output_file, skip_header=2, usecols=(0))
@@ -800,9 +988,9 @@ class ARDENT_tableXY(object):
             ecc = np.zeros((Noutputs, Nbodies))
             w = np.zeros((Noutputs, Nbodies))
             for i in range(Nbodies):
-                a[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+1))
-                ecc[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+2))
-                w[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*5+3))
+                a[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*6+1))
+                ecc[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*6+3))
+                w[:,i] = np.genfromtxt(output_file, skip_header=2, usecols=(i*6+4))
 
         print(' [INFO] Preparing plot of the temporal evolution of the orbital elements. ')
         tmin = 0. - (time[-1]/50.)
@@ -837,4 +1025,5 @@ class ARDENT_tableXY(object):
         plt.tight_layout()
         plt.subplots_adjust(wspace=0.25)
         plt.savefig(self.tag+'LongTermEvolution.png', format='png', dpi = 300)
+
 
