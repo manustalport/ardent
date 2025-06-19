@@ -26,4 +26,7 @@ Follow the steps of the ardent/hands-on_tutorial.ipynb file, that will guide you
 + Michaël Cretignier, University of Oxford
 
 ### Citations
-If you use ARDENT for your research, please cite Stalport, et al. 2025, submitted to A&A. 
+If you use ARDENT for your research, please cite: 
+
+Stalport, et al. 2025, submitted to A&A: ARDENT -- A Python package for fast dynamical detection limits with radial velocities 
+
