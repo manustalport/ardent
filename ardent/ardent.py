@@ -654,8 +654,8 @@ class ARDENT_tableXY(object):
             planets2 = planets2.loc[(planets2[keyword_x]>np.min(xvar))&(planets2[keyword_x]<np.max(xvar))]
             variable = np.array(planets2[keyword_y])
             variable[variable>1.05*np.max(yvar)] = np.max(yvar)
-            plt.scatter(planets2[keyword_x],variable,color='k',marker='^',s=40,zorder=9)
-            plt.scatter(planets2[keyword_x],planets2[keyword_y],color='k',marker='*',s=100,zorder=10)
+            plt.scatter(planets2[keyword_x],variable,color='k',marker='^',s=45,zorder=9)
+            plt.scatter(planets2[keyword_x],planets2[keyword_y],color='k',marker='D',s=65,zorder=10)
 
         plt.scatter(xvar, yvar, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
 
@@ -898,8 +898,8 @@ class ARDENT_tableXY(object):
 #        planets = planets.loc[(planets['period']>2.0)&(planets['period']<600.0)]
         variable = np.array(planets['mass']) * unit
         variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
-        plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=30,zorder=20)
-        plt.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='*',s=80,zorder=22)
+        plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=45,zorder=20)
+        plt.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='D',s=65,zorder=22)
 
         plt.rc('font', size=12)
         plt.xlabel(xlabel, size='x-large')
