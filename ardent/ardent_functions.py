@@ -284,7 +284,7 @@ def OrbitCrossing(a, e):
     
     Output
     ------
-    orb_cross (bool): True if the orbits of at least one planet pair cross. False otherwise.
+    orb_cross (int): 1 if the orbits of at least one planet pair cross. 0 otherwise.
     """
     orb_cross = 0
     NB_pairs = len(a) - 1
@@ -295,6 +295,71 @@ def OrbitCrossing(a, e):
             orb_cross = 1
     
     return orb_cross
+    
+    
+################### MMR CHECK
+########## In complement of the orbit crossing criterion, to not analytically exclude crossing orbits that are in MMR
+def MMR_check(P):
+    """
+    Function checking if any consecutive planet pair is close to a low-order mean-motion resonance (MMR), following the criterion described in Dai et al. (2024). This function checks for the following MMR:
+    Order 1: 2:1, 3:2, 4:3, 5:4, 6:5
+    Order 2: 3:1, 5:3, 7:5
+    Order 3: 4:1, 5:2
+    
+    Arguments
+    ---------
+    P (1D array): period (any units)
+    
+    Output
+    ------
+    in_MMR (int): 1 if at least one planet pair is close to one of the MMR listed above. 0 otherwise.
+    """
+    in_MMR = int(0) # 1 if any planet pair is close enough to one of the low-order MMR listed below ; 0 otherwise
+    bounds_1 = [-0.015, 0.03]
+    bounds_23= [-0.015, 0.015]
+    
+    for i in range(len(P)-1):
+        Pratio = P[i+1]/P[i]
+        Delta_1 = [Pratio / (p/(p-1)) - 1. for p in range(2,7)] # 1st order MMR: 2:1, 3:2, 4:3, 5:4, 6:5
+        Delta_2 = [Pratio / (p/(p-2)) - 1. for p in range(3,8,2)] # 2nd order MMR: 3:1, 5:3, 7:5
+        Delta_3 = [Pratio / (p/(p-3)) - 1. for p in range(4,6)] # 3rd order MMR: 4:1, 5:2
+        
+        for elem in Delta_1:
+            if bounds_1[0] <= elem <= bounds_1[1]:
+                in_MMR = 1
+        for elem in Delta_2:
+            if bounds_23[0] <= elem <= bounds_23[1]:
+                in_MMR = 1
+        for elem in Delta_3:
+            if bounds_23[0] <= elem <= bounds_23[1]:
+                in_MMR = 1
+    
+    return in_MMR
+    
+    
+################### 1:1 MMR CHECK
+def in_11MMR(P):
+    """
+    Function checking if any consecutive planet pair is close to a 1:1 MMR.
+    
+    Arguments
+    ---------
+    P (1D array): period (any units)
+    
+    Output
+    ------
+    MMR11 (int): 1 if at least one planet pair is close to the 1:1 MMR. 0 otherwise.
+    """
+    MMR11 = int(0) # 1 if any planet pair is close enough to one of the low-order MMR listed below ; 0 otherwise
+    bounds = [-0.09, 0.09]
+    
+    Delta_0 = [P[i+1]/P[i] - 1 for i in range(len(P)-1)]
+        
+    for elem in Delta_0:
+        if bounds[0] <= elem <= bounds[1]:
+            MMR11 = 1
+    
+    return MMR11
 
 
 ################### DYNAMICAL EVOLUTION AND STABILITY ESTIMATION
@@ -405,7 +470,7 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
 
 #############################
 ################### MAIN CODE
-def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.2, GR=False):
+def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.2, GR=False, MassPrecision=0.5):
     """
     Computation of the dynamical detection limits
     
@@ -425,6 +490,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     Nphases (int, optional): Number of orbital phases per injected (P, K) at which to compute the orbital stability (default=4)
     max_drift_a (float, optional): stability threshold based on maximum relative drift in semi-major axis of the planets (default=0.2, i.e. 20%)
     GR (bool): General relativity correction included if GR=True, False otherwise. (default=False)
+    MassPrecision (float): Precision threshold on the dynamical mass limit estimation [M_Earth]. (default=0.5 M_Earth)
     """
         
     AllOutput = output_file1
@@ -505,21 +571,26 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     print('\n [INFO] Processing stability estimation at period %f[d] (bin %.0f / %.0f)  <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
 #    print(' [INFO] Current time : ',formatted_time)
     
-    stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-    if stab_rate_analytic == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we have to further test if the system is truly short-term unstable
-        crossing = OrbitCrossing(a, e)
-        if crossing == 1: # If orbits are crossing, for sure the system is unstable. No need of numerical simulations.
-            stab_rate = 0
-        else:
-            stab_rate_numeric = 0
-            for j in range(Nphases):
-                phase[index0] = phases_inject[j]
-                stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR) # stab_rate_numeric is a binary number: 0 = unstable, 1 = stable
-    
-            stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
-            
-    else: # in this case, the system is AMD-stable
-        stab_rate = 100
+    MMR11 = in_11MMR(P)
+    if MMR11 == 0: # ARDENT does not consider the 1:1 MMR case
+        stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
+        if stab_rate_analytic == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we have to further test if the system is truly short-term unstable
+            crossing = OrbitCrossing(a, e)
+            if crossing == 1 and MMR_check(P) == 0: # If orbits are crossing with no planet pair close to MMR, for sure the system is unstable. No need of numerical simulations.
+    #            if MMR_check(P) == 0: # No consecutive planet pair close to any low-order MMR
+                stab_rate = 0
+            else:
+                stab_rate_numeric = 0
+                for j in range(Nphases):
+                    phase[index0] = phases_inject[j]
+                    stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR) # stab_rate_numeric is a binary number: 0 = unstable, 1 = stable
+        
+                stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
+                
+        else: # in this case, the system is AMD-stable
+            stab_rate = 100
+    else: # In case any planet pair is close to 1:1MMR, we define the system as unstable
+        stab_rate = 0
         
     file = open(AllOutput, 'a')
     file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
@@ -529,7 +600,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
 
     iteration=0
     if (stab_rate <= 0.1): # If the rate of stability is smaller than 0.1%
-        Thresh = 0.5 * mE_S # mass precision criterion is 0.5 M_Earth (expressed in [M_Sun])
+        Thresh = MassPrecision * mE_S # mass precision criterion, expressed in [M_Sun]
         dM = 1000000.
         q = int(0)
         M_max = M_lim100[shift]
@@ -540,20 +611,23 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                 M[index0] = 0.001*mE_S
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
 
-                stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-                if stab_rate_analytic == 0:
-                    crossing = OrbitCrossing(a, e)
-                    if crossing==1:
-                        stab_rate = 0.
-                    else:
-                        stab_rate_numeric = 0.
-                        for j in range(Nphases):
-                            phase[index0] = phases_inject[j]
-                            stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
+                if MMR11 == 0:
+                    stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
+                    if stab_rate_analytic == 0:
+                        crossing = OrbitCrossing(a, e)
+                        if crossing==1 and MMR_check(P) == 0:
+                            stab_rate = 0.
+                        else:
+                            stab_rate_numeric = 0.
+                            for j in range(Nphases):
+                                phase[index0] = phases_inject[j]
+                                stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
 
-                        stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
+                            stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
+                    else:
+                        stab_rate = 100
                 else:
-                    stab_rate = 100
+                    stab_rate = 0
                     
                 file = open(AllOutput, 'a')
                 file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
@@ -577,7 +651,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                 stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
                 if stab_rate_analytic == 0:
                     crossing = OrbitCrossing(a, e)
-                    if crossing==1:
+                    if crossing==1 and MMR_check(P) == 0:
                         stab_rate = 0.
                     else:
                         stab_rate_numeric = 0.
