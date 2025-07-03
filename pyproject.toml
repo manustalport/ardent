@@ -9,6 +9,7 @@ license = { text = "BSD 3-Clause License" }
 dependencies = [
     "numpy",
     "matplotlib",
+    "pandas",
     "rebound=4.4.3",
     "reboundx=4.3.0",
     "joblib",
