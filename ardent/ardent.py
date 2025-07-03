@@ -234,6 +234,7 @@ class ARDENT_tableXY(object):
             plt.legend(loc=2)
         plt.xlabel('X [AU]', size='large')
         plt.ylabel('Y [AU]', size='large')
+        plt.tight_layout()
 
         hz_inf = np.polyval(np.array([-0.47739653,  0.08719618,  2.92658674, -2.58897268,  1.11537673, -0.06598796]),self.mstar) # From Kopparapu(2013)
         hz_sup = np.polyval(np.array([ 1.15443229, -6.7284057 , 12.93412033, -8.26643736,  2.72788611,-0.15849661]),self.mstar) # From Kopparapu(2013)
