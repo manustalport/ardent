@@ -15,10 +15,6 @@ from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
 from scipy.interpolate import interp1d
 
-#NlocalCPU = int(3) # The number of CPUs allocated to compute the dynamical detection limits, to fasten the computation.
-#    # If NlocalCPU is set to 0, the program will be compatible with external cluster.
-#    # To use the code on a cluster, import all the needed files in the execution folder. Create a virtual environement to install rebound and reboundx.
-#    # Use the argument --array of sbatch to call the programme for each value of P_inject
     
 # ---------- Define constants
 mE_S = 3.986004e14 / 1.3271244e20 # Earth-to-Solar mass ratio
@@ -109,15 +105,6 @@ class ARDENT_tableXY(object):
         phase_ML = np.sum([p.split('_')[0]=='ML' for p in param_names])
         phase_MA = np.sum([p.split('_')[0]=='MA' for p in param_names])
         phase_peritime = np.sum([p.split('_')[0]=='peritime' for p in param_names])
-#        if phase_param > 0:
-#            ML = True
-#            peri_time = False
-#        elif phase_param == 0 and phase_param2 > 0:
-#            ML = False
-#            peri_time = True
-#        else:
-#            ML = False
-#            peri_time = False
             
         for i in np.arange(1,1+nb_planet):
             p = param_values[param_names=='P_%.0f'%(i)][0]
@@ -138,12 +125,6 @@ class ARDENT_tableXY(object):
                 peri_time = param_values[param_names=='peritime_%.0f'%(i)][0] # [deg]
             if phase_ML == 0 and phase_MA == 0 and phase_peritime == 0:
                 print('[ERROR] The orbital phases of the planets must be indicated.')
-#            if ML == True:
-#                mean_long = param_values[param_names=='ML_%.0f'%(i)][0] # [deg]
-#                mean_anomaly = np.nan
-#            else:
-#                mean_anomaly = param_values[param_names=='MA_%.0f'%(i)][0] # [deg]
-#                mean_long = np.nan
 
             mass,semi_axis = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
 
@@ -228,9 +209,6 @@ class ARDENT_tableXY(object):
             else:
                 plt.plot(X[0],X[1],label=r'%.2f $M_{Jup}$'%(mi*mE_J))
 
-#        plt.plot(np.sin(phases),np.cos(phases),color='k',ls='-.',lw=1)
-#        plt.axhline(y=0,color='k',ls=':',lw=1,alpha=0.2)
-#        plt.axvline(x=0,color='k',ls=':',lw=1,alpha=0.2)
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         if legend:
             plt.legend(loc=2)
@@ -258,39 +236,6 @@ class ARDENT_tableXY(object):
             plt.ylim(-xlim,xlim)
 
 
-#    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile=None, DynDLfile=None, x_au=1.25, detection_limit='RV', interp='zero'):
-#
-#        mstar = self.mstar
-#
-#        if detection_limit=='RV':
-#            if InjectionRecoveryFile is None:
-#                statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=10, axis_y_var='M')
-#            elif InjectionRecoveryFile is not None:
-#                statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=95, nbins=10, axis_y_var='M')
-#        else:
-#            if DynDLfile is None:
-#                P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
-#                M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
-#                statistic = [P,M_stb]
-#            elif DynDLfile is not None:
-#                P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
-#                M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(2))
-#                statistic = [P,M_stb]
-#
-#        a = (statistic[0]/365.25)**(2./3.) * ((mstar+statistic[1]*mE_S)/(1.+mE_S))**(1./3.)
-#
-#        grid = np.linspace(-x_au,x_au,1000)
-#        Gx,Gy = np.meshgrid(grid,grid)
-#        R = np.ravel(np.sqrt(Gx**2+Gy**2))
-#        M = interp1d(a, statistic[1], kind=interp, bounds_error=False, fill_value=np.nan)(R)
-#        M = np.reshape(M,(1000,1000))
-#
-#        plt.rc('font', size=12)
-#        plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=16,cmap='gnuplot')
-#        ax = plt.colorbar(pad=0)
-#        ax.ax.set_ylabel('95$\%%$ Mass limit detection', size='large')
-
-
     def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile, DynDLfile, MassUnits, percentage, x_au=1.25, detection_limit='RV', interp='zero'):
         """
         Plot the grid of mass detection limits in the orbital plane.
@@ -305,11 +250,6 @@ class ARDENT_tableXY(object):
             statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=percentage)
             Mmax = max(statistic[1])
 
-#        if detection_limit=='RV':
-#            if InjectionRecoveryFile is None:
-#                statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=95)
-#            elif InjectionRecoveryFile is not None:
-#                statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=95)
         if detection_limit!='RV':
             if DynDLfile is None:
                 P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
@@ -523,7 +463,6 @@ class ARDENT_tableXY(object):
             xlabel = 'semi-maj axis [AU]'
             keyword_x = 'semimajor'
             
-#        yvar = output[axis_y_var]
         ylabel = 'K [m/s]'
         keyword_y = 'semi-amp'
         unit = 1
@@ -534,7 +473,6 @@ class ARDENT_tableXY(object):
             elif MassUnits == 'Jupiter':
                 ylabel = 'Mass [M$_{Jup}$]'
                 unit = mE_J
-#                yvar = yvar * mE_J # Conversion to Jupiter masses if required
         yvar = output[axis_y_var] * unit # Conversion to Jupiter masses if required
 
         detect_rate = detect_rate * 100.
@@ -712,30 +650,6 @@ class ARDENT_tableXY(object):
             ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
 
 
-#        if os.path.exists(self.output_file_STDL1) and os.path.exists(self.output_file_STDL2):
-#            if relaunch:
-#                print(' [INFO] An old processing has been found. Overwriting the output files (relaunch=True). ')
-#                if NlocalCPU == 0: #cluster
-#                    shift = int(sys.argv[1])
-##                    n_jobs = int(sys.argv[2])
-#                    ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR)
-#
-#                elif NlocalCPU > 0: #local CPU
-#                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
-#
-#            else:
-#                print(' [INFO] An old processing has been found, and relaunch=False. First delete or rename the output files below prior to launch a new processing, or set relaunch to True: \n\n %s \n %s \n '%(self.output_file_STDL1, self.output_file_STDL2))
-#
-#        else:
-#            if NlocalCPU == 0: #cluster
-#                shift = int(sys.argv[1])
-##                    n_jobs = int(sys.argv[2])
-#                ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR)
-#
-#            elif NlocalCPU > 0: #local CPU
-#                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, Noutputs=Noutputs, NAFF_Thresh=NAFFthr, GR=GR) for shift in range(N))
-
-
     def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None, MassUnits='Earth', axis_x_var='P'):
         """
         Plot the RV detection limits, both data-driven and dynamical detection limits.
@@ -771,7 +685,6 @@ class ARDENT_tableXY(object):
             P_dataDL = (P_dataDL/365.25)**(2./3.) * ((self.mstar+M_dataDL*mE_S)/(1.+mE_S))**(1./3.)
             keyword_x = 'semimajor'
             xlabel = 'semi-maj axis [AU]'
-#            xvar = (xvar/365.25)**(2./3.) * ((Mstar+mp*mE_S)/(1.+mE_S))**(1./3.)
 
         if MassUnits == 'Jupiter':
             unit = mE_J # a conversion factor to have the mass in the right unit
@@ -783,8 +696,6 @@ class ARDENT_tableXY(object):
         M_dataDL = M_dataDL * unit
         
         fig = plt.figure(figsize=(5,4))
-#        plt.plot(P_dataDL, M_dataDL, color='xkcd:mahogany', alpha=0.6, lw=2, marker='o', mfc='white', ms=6, mew=1.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
-#        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=2, marker='o', ms=4, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
         plt.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
         plt.plot(P, M_stb, ls='-', color='xkcd:fire engine red', lw=1, marker='o', ms=6, mfc='yellow', mew=1, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
         plt.fill_between(x= P, y1= M_stb, facecolor= "xkcd:fire engine red", lw=0., alpha=0.1)
@@ -793,7 +704,6 @@ class ARDENT_tableXY(object):
 
         planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass'])
         planets = planets.loc[(planets[keyword_x]>np.min(P))&(planets[keyword_x]<np.max(P))]
-#        planets = planets.loc[(planets['period']>2.0)&(planets['period']<600.0)]
         variable = np.array(planets['mass']) * unit
         variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
         plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=45,zorder=20)
