@@ -1,6 +1,6 @@
 [project]
 name = "ardent"
-description = "A package for computing dynamical exoplanet detection limits from radial velocity timeseries."
+description = "A Python package for computing exoplanet dynamical detection limits from radial velocity timeseries."
 readme = "README.md"
 authors = [
     { name = "Manu Stalport", email = "manu.stalport@uliege.be" }
