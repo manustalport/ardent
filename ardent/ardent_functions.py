@@ -15,7 +15,6 @@ from scipy.special import erf
 from tqdm import tqdm
 import warnings
 warnings.simplefilter("ignore", np.ComplexWarning)
-#np.warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 # ---------- Define constants
 Gconst = 6.6743*10**(-11) # The universal gravitation constant, in units of m^3/(kg*s^2)  ;  Value from CODATA 2018
@@ -385,7 +384,6 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
     max_drift_a (float, optional): semi-major axis drift threshold beyond which the system is claimed unstable. This stability criterion is a relative drift measurement: drift = (a(t2)-a(t1)) / a(0). (Default=0.2, i.e. 20%)
     GR (bool, optional): include the general relativity module if True (default=False)
     """
-#    Nbodies = int(Nplanets + 1) # The total number of bodies excluding the star, i.e. Nplanets + 1 injected planet
     
     a = KepParam[0]
     phase = KepParam[1]
@@ -549,13 +547,6 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
         phase = ang_rad(mean_anomaly)
         phase_param = 'mean_anomaly'
     
-#    if np.isnan(mean_long[0]) == False:
-#        phase = ang_rad(np.array(table_keplerian['mean_long']))
-#        ML = True
-#    else:
-#        phase = ang_rad(np.array(table_keplerian['mean_anomaly']))
-#        ML = False
-    
     params = [a,phase,e,w,inc,O,M] # Keep the order of the elements! a,phase,e,w,inc,O,M
     phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, generate Nphases points with constant interval in [start, stop[ (the last value is excluded)
     
@@ -565,11 +556,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     P_inject = P_inject/365.25
 
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
-#    now = datetime.now()
-#    formatted_time = now.strftime("%H:%M:%S")  # Format: HH:MM:SS
-
     print('\n [INFO] Processing stability estimation at period %f[d] (bin %.0f / %.0f)  <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
-#    print(' [INFO] Current time : ',formatted_time)
     
     MMR11 = in_11MMR(P)
     if MMR11 == 0: # ARDENT does not consider the 1:1 MMR case
@@ -577,7 +564,6 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
         if stab_rate_analytic == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we have to further test if the system is truly short-term unstable
             crossing = OrbitCrossing(a, e)
             if crossing == 1 and MMR_check(P) == 0: # If orbits are crossing with no planet pair close to MMR, for sure the system is unstable. No need of numerical simulations.
-    #            if MMR_check(P) == 0: # No consecutive planet pair close to any low-order MMR
                 stab_rate = 0
             else:
                 stab_rate_numeric = 0
@@ -734,14 +720,6 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
     else:
         phase = ang_rad(mean_anomaly)
         phase_param = 'mean_anomaly'
-    
-#    mean_long = np.array(table_keplerian['mean_long'])
-#    if np.isnan(mean_long[0]) == False:
-#        phase = ang_rad(np.array(table_keplerian['mean_long']))
-#        ML = True
-#    else:
-#        phase = ang_rad(np.array(table_keplerian['mean_anomaly']))
-#        ML = False
     
     print(' [INFO] --Long term stability-- Start of the numerical integration ')
     sim = rebound.Simulation()
