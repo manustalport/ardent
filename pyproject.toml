@@ -5,6 +5,9 @@ readme = "README.md"
 authors = [
     { name = "Manu Stalport", email = "manu.stalport@uliege.be" }
 ]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research"]
 license = { text = "BSD 3-Clause License" }
 dependencies = [
     "numpy",
