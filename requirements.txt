@@ -1,0 +1,8 @@
+numpy
+matplotlib
+pandas
+PyAstronomy
+tqdm
+joblib
+rebound==4.4.3
+reboundx==4.3.0
