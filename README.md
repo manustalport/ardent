@@ -19,8 +19,8 @@ ARDENT is built on a series of python packages, contained in the requirements.tx
 ### Installation 
 To use ARDENT, you can clone the repository to your computer: `git clone https://github.com/manustalport/ardent`. 
 Once on your computer, add ARDENT to your `$PYTHONPATH`. To proceed, in a terminal, `cd` into the ARDENT folder and then: 
-- Ensure install file is executable, if not run `chmod +x install`
-- Run install file: `./install`. 
+- `echo "export PYTHONPATH=$PWD/ardent:\$PYTHONPATH" >> ~/.bash_profile`
+- `source ~/.bash_profile`
 
 It is recommended using a virtual environment to run ARDENT, as some dependencies run on specific versions. This will avoid conflicts with your own system. 
 In a terminal, run `python -m venv ardent_venv` to create a virtual environment named ardent_venv. 
