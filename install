@@ -1,2 +1,0 @@
-echo "export PYTHONPATH=$PWD/ardent:\$PYTHONPATH" >> ~/.bash_profile
-source ~/.bash_profile
