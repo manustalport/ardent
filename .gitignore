@@ -1,0 +1,7 @@
+__pycache__/
+.eggs/
+*.egg-info
+MANIFEST
+.DS_Store
+*/*.ipynb
+logo/
