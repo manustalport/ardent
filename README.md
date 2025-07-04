@@ -28,6 +28,8 @@ You need to activate this environment with `source ardent_venv/bin/activate`.
 
 Finally, install all the dependencies at once in your new virtual environment: `pip install -r requirements.txt`
 
+The code was tested with Python 3.11, rebound 4.4.3 and reboundx 4.3.0. 
+
 ARDENT is installable on Linux and MacOS distributions.
 
 ### Example use 
