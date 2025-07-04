@@ -7,6 +7,7 @@ The code can be used as two separate modules, for the data-driven detection limi
 ARDENT is built on a series of python packages. 
 + numpy
 + matplotlib
++ pandas
 + rebound
 + reboundx
 + joblib
