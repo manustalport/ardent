@@ -4,4 +4,5 @@ __pycache__/
 MANIFEST
 .DS_Store
 */*.ipynb
+*/*.dat
 logo/
