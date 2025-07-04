@@ -17,8 +17,8 @@ ARDENT is built on a series of python packages, contained in the requirements.tx
 + PyAstronomy
 
 ### Installation 
-To use ARDENT, you can clone the repository to your computer: `git clone https://github.com/manustalport/ardent`. 
-Once on your computer, add ARDENT to your `$PYTHONPATH`. To proceed, in a terminal, `cd` into the ARDENT folder and then: 
+To use ARDENT, you can clone the repository to your computer: `git clone https://github.com/manustalport/ardent.git`. 
+Once on your computer, add ARDENT to your `$PYTHONPATH`. To proceed, in a terminal, `cd` into the ardent parent folder and then: 
 - `echo "export PYTHONPATH=$PWD/ardent:\$PYTHONPATH" >> ~/.bash_profile`
 - `source ~/.bash_profile`
 
