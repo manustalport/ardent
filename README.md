@@ -6,7 +6,7 @@ The Algorithm for the Refinement of DEtection limits via N-body stability Thresh
 The code can be used as two separate modules, for the data-driven detection limits and the dynamical detection limits. ARDENT can be used to refine the detection limits, test the dynamical plausibility of a planet candidate, and check if there is dynamical room for additional planets in a certain period range. 
 
 ### Dependencies
-ARDENT is built on a series of python packages. 
+ARDENT is built on a series of python packages, contained in the requirements.txt file. 
 + numpy
 + matplotlib
 + pandas
@@ -17,7 +17,16 @@ ARDENT is built on a series of python packages.
 + PyAstronomy
 
 ### Installation 
-The simplest way to install ardent on your machine is to use pip. Given that some dependencies must have specific versions, I recommend using a virtual environment to avoid conflicts with your own system. 
+To use ARDENT, you can clone the repository to your computer: `git clone https://github.com/manustalport/ardent`. 
+Once on your computer, add ARDENT to your `$PYTHONPATH`. To proceed, in a terminal, `cd` into the ARDENT folder and then: 
+- Ensure install file is executable, if not run `chmod +x install`
+- Run install file: `./install`. 
+
+It is recommended using a virtual environment to run ARDENT, as some dependencies run on specific versions. This will avoid conflicts with your own system. 
+In a terminal, run `python -m venv ardent_venv` to create a virtual environment named ardent_venv. 
+You need to activate this environment with `source ardent_venv/bin/activate`. 
+
+Finally, install all the dependencies at once in your new virtual environment: `pip install -r requirements.txt`
 
 ARDENT is installable on Linux and MacOS distributions.
 
