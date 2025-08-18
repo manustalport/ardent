@@ -671,7 +671,6 @@ class ARDENT_tableXY(object):
         elif NlocalCPU == 0: #cluster
             ##### On the cluster, the code always overwrites potential old processings with the same name.
             shift = int(sys.argv[1])
-#                    n_jobs = int(sys.argv[2])
             ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
 
 
@@ -689,8 +688,6 @@ class ARDENT_tableXY(object):
         if DynDLfile is None and DataDLfile is None:
             P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
             M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
-#            P_dataDL = self.D95['period']
-#            M_dataDL = self.D95['mass']
             P_dataDL, M_dataDL = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=self.nbins, axis_y_var='M')
         elif DynDLfile is not None and DataDLfile is not None:
             P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
