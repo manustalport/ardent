@@ -105,7 +105,6 @@ class ARDENT_tableXY(object):
         phase_ML = np.sum([p.split('_')[0]=='ML' for p in param_names])
         phase_MA = np.sum([p.split('_')[0]=='MA' for p in param_names])
         phase_peritime = np.sum([p.split('_')[0]=='peritime' for p in param_names])
-#        e_min = np.sum([p.split('_')[0]=='elower' for p in param_names])
             
         for i in np.arange(1,1+nb_planet):
             p = param_values[param_names=='P_%.0f'%(i)][0]
@@ -115,7 +114,6 @@ class ARDENT_tableXY(object):
                 e = param_values[param_names=='elower_%.0f'%(i)][0]
             else:
                 e = param_values[param_names=='e_%.0f'%(i)][0]
-#            e = param_values[param_names=='e_%.0f'%(i)][0]
             omega = param_values[param_names=='w_%.0f'%(i)][0] # [deg]
             inc = param_values[param_names=='inc_%.0f'%(i)][0] # [deg]
             asc_node = param_values[param_names=='asc_node_%.0f'%(i)][0] # [deg]
@@ -150,7 +148,7 @@ class ARDENT_tableXY(object):
             mean_anomaly : mean anomaly [deg]
             peri_time : time of pericenter passage
             e : orbital eccentricity
-            elower (optional) : The lower orbital eccentricity compatible with the observations, typically the 1-sigma lower limit. In case of significant uncertainties on the eccentricities, it is recommended to provide this parameter.
+            elower (optional) : The lower limit on orbital eccentricity compatible with the observations, i.e. typically the 1-sigma lower limit. In case of significant uncertainties on the eccentricities, it is recommended to provide this parameter.
             omega : argument of periastron [deg]
             inc : orbital inclination [deg]
             asc_node : longitude of the ascending node [deg]
@@ -600,34 +598,6 @@ class ARDENT_tableXY(object):
             
         D95 = pd.DataFrame({'period':subP_means,'mass':M95})
         
-#        if fine_grid == True: # Thinner grid to explore around existing planets
-#            grid_p = np.array(D95['period'])
-#            line = np.array(table_keplerian.index)
-#            N_finegrids = int(0)
-#            for l in line:
-#                p, m, e, a = table_keplerian.loc[l,['period','mass','ecc','semimajor']]
-#                if p<np.max(D95['period']) and p>np.min(D95['period']):
-#                    N_finegrids += 1
-#
-#                    Pout_min = 365.25 * (a * (1+e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) - (p/6)
-#                    Pout_max = 365.25 * (a * (1+e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) + (p/6)
-#                    Pin_max = 365.25 * (a * (1-e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) + (p/6)
-#                    Pin_min = 365.25 * (a * (1-e))**(3./2.) * ((mstar+m*mE_S)/(1.+mE_S))**(-1./2.) - (p/6)
-#                    if Pin_max < Pout_min:
-#                        Pin = 10**np.linspace(np.log10(Pin_min),np.log10(Pin_max),6)
-#                        Pout = 10**np.linspace(np.log10(Pout_min),np.log10(Pout_max),6)
-#                        grid_p = np.hstack([grid_p,Pin]) ; grid_p = np.hstack([grid_p,Pout])
-#
-#                    else:
-#                        Periods = 10**np.linspace(np.log10(Pin_min), np.log10(Pout_max), 6)
-#                        grid_p = np.hstack([grid_p,Periods])
-#
-#            if N_finegrids > 0:
-#                grid_p = np.unique(np.round(np.sort(grid_p),4))
-#                D95_interp = interp1d(np.array(D95['period']), np.array(D95['mass']), kind='linear', bounds_error=False, fill_value=0)(grid_p)
-#
-#                D95 = pd.DataFrame({'period':grid_p,'mass':D95_interp})
-
         Pmin = rangeP[0]
         Pmax = rangeP[1]
         if fine_grid == True: # Thinner grid to explore around existing planets
