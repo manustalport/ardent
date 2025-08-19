@@ -554,7 +554,7 @@ class ARDENT_tableXY(object):
         InjectionRecoveryFile (string): Filename of the data-driven injection-recovery tests
         param_file (string): Name of the input file containing numerical integration parameters (in replacement of specifying them as arguments of this function)
         nbins (int): The number of period values with which to compute the data-driven and dynamical detection limits (default=15)
-        integration_time (float): Total integration time used to compute the orbital stability [yr] (default=Pouter*500000)
+        integration_time (float): Total integration time used to compute the orbital stability [yr] (default=Pouter*1e4)
         dt (foat): Integration timestep [yr] (default=Pinner/50)
         Nphases (int): Number of orbital phases per injected (P, K) at which to compute the orbital stability (default=4)
         min_dist (float): Criterion on close-encounter [Hill_radius] (default=3)
