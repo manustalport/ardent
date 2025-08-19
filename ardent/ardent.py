@@ -559,7 +559,7 @@ class ARDENT_tableXY(object):
         Nphases (int): Number of orbital phases per injected (P, K) at which to compute the orbital stability (default=4)
         min_dist (float): Criterion on close-encounter [Hill_radius] (default=3)
         max_dist (float): Criterion on escape [AU] (default=5)
-        max_drift_a (float): Maximum relative drift allowed in semi-major axis of the planets for the system to be classified stable (default=0.2, i.e. 20%)
+        max_drift_a (float): Maximum relative drift allowed in semi-major axis of the planets for the system to be classified stable (default=0.0025, i.e. 0.25%)
         GR (bool): General relativity correction included if GR=True, False otherwise. (default=False)
         fine_grid (bool): Compute a denser grid of detection limits around the periastron and apastron of each planet in the system. (default=True)
         relaunch (bool): Set to True to overwrite any old run with identical settings, False otherwise. (default=False)
