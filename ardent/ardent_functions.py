@@ -96,10 +96,13 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(
 
     output_dir = os.path.dirname(output_file)+'/'
 
-    N = len(rv)
-    rms = np.sqrt(np.sum(rv**2)/N)
     Pmin = rangeP[0]
     Pmax = rangeP[1]
+    N = len(rv)
+    if (rv == 0).all():
+        rms = np.sqrt(np.sum(rv_err**2)/N)
+    else:
+        rms = np.sqrt(np.sum(rv**2)/N)
     Kmin = rangeK[0]*rms
     Kmax = rangeK[1]*rms
     
@@ -113,7 +116,10 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(
     for i in tqdm(range(Nsamples)):
         detect = int(0)
         for j in range(Nphases):
-            rv_simu = rv - K[i] * np.sin((t*2*np.pi/P[i])+phase[j])
+            if (rv == 0).all(): # i.e., if the array of RVs is made of zeros, in which case the residuals were not given ; only given are times + uncertainties
+                rv_simu = np.random.normal(0, rv_err) - K[i] * np.sin((t*2*np.pi/P[i])+phase[j])
+            else:
+                rv_simu = rv - K[i] * np.sin((t*2*np.pi/P[i])+phase[j])
 
             if 0.6*Pmin > 1.1:
                 period_start = 0.6*Pmin # Periodogram search starts at 40% below of Pmin
@@ -219,7 +225,7 @@ def AnalyticStability(Mstar, a, e, inc, M):
     
     Output
     ------
-    analytic_stab (int): indicator of orbital stability. 1: AMD-stable ; 0: AMD-unstable, indicating that further numerical investigations are needed.
+    analytic_stab (int): indicator of orbital stability. 1: AMD-stable ; 0.5: Hill-unstable in the AMD framework (need for further stability checks) ; 0: unstable (MMR overlap).
     """
     ### Convert G in units of AU, Solar mass and year
     G = Gconst * 1.9884*10**30 # Converting kg in solar mass
@@ -252,11 +258,11 @@ def AnalyticStability(Mstar, a, e, inc, M):
         alpha_cir = 1 - (1.46*epsilon[i]**(2./7.))
         alpha_R = 1 - 1.5*epsilon[i]**(1./4.) - 0.316*epsilon[i]**(0.5)
         
-        if alpha[i] < alpha_cir and alpha[i] < alpha_R: # Hill
+        if alpha[i] < alpha_R: # Hill
             Cc_H = gamma[i] * alpha[i]**0.5 + 1 - (1+gamma[i])**1.5 * np.sqrt(alpha[i]/(gamma[i]+alpha[i]) * (1+3**(4./3.)*epsilon[i]**(2./3.)*gamma[i]/((1+gamma[i])**2)))
             beta = AMD[i] / Cc_H
             if beta >= 1.:
-                analytic_stab = 0
+                analytic_stab = 0.5
             
         elif alpha[i] < alpha_cir and alpha[i] >= alpha_R: # MMR
             r = 0.80199
@@ -468,7 +474,7 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
 
 #############################
 ################### MAIN CODE
-def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.2, GR=False, MassPrecision=0.5):
+def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.00025, GR=False, MassPrecision=0.5):
     """
     Computation of the dynamical detection limits
     
@@ -523,7 +529,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     if dt is None:
         dt = np.min(table_keplerian['period'])/(365.25*50) # By default, P_inner/50 in [yr]
     if T is None:
-        T = 1e5*np.max(table_keplerian['period'])/365.25 # By default, 100k * P_outer [yr]
+        T = 1e4*np.max(table_keplerian['period'])/365.25 # By default, 10k * P_outer [yr]
 
     P = np.array(table_keplerian['period'])/365.25              # [yr]
     K = np.array(table_keplerian['semi-amp'])
@@ -561,7 +567,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     MMR11 = in_11MMR(P)
     if MMR11 == 0: # ARDENT does not consider the 1:1 MMR case
         stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-        if stab_rate_analytic == 0: # i.e., if and only if the system (including the injected planet) is AMD-unstable, we have to further test if the system is truly short-term unstable
+        if 1 > stab_rate_analytic > 0: # i.e., if and only if the system (including the injected planet) is Hill AMD-unstable (but far from MMR overlap), we have to further test if the system is truly short-term unstable
             crossing = OrbitCrossing(a, e)
             if crossing == 1 and MMR_check(P) == 0: # If orbits are crossing with no planet pair close to MMR, for sure the system is unstable. No need of numerical simulations.
                 stab_rate = 0
@@ -573,7 +579,9 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
         
                 stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
                 
-        else: # in this case, the system is AMD-stable
+        elif stab_rate_analytic == 0: # in this case, the system is unstable (MMR overlap)
+            stab_rate = 0
+        elif stab_rate_analytic == 1: # in this case, the system is Hill-stable in the AMD framework
             stab_rate = 100
     else: # In case any planet pair is close to 1:1MMR, we define the system as unstable
         stab_rate = 0
@@ -599,7 +607,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
 
                 if MMR11 == 0:
                     stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-                    if stab_rate_analytic == 0:
+                    if 1 > stab_rate_analytic > 0:
                         crossing = OrbitCrossing(a, e)
                         if crossing==1 and MMR_check(P) == 0:
                             stab_rate = 0.
@@ -610,7 +618,9 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                                 stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
 
                             stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
-                    else:
+                    elif stab_rate_analytic == 0:
+                        stab_rate = 0
+                    elif stab_rate_analytic == 1:
                         stab_rate = 100
                 else:
                     stab_rate = 0
@@ -635,7 +645,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                 M[index0] = (M_max+M_min) / 2.
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
                 stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-                if stab_rate_analytic == 0:
+                if 1 > stab_rate_analytic > 0:
                     crossing = OrbitCrossing(a, e)
                     if crossing==1 and MMR_check(P) == 0:
                         stab_rate = 0.
@@ -645,7 +655,9 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                             phase[index0] = phases_inject[j]
                             stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
                         stab_rate = round((stab_rate_numeric / Nphases) * 100., 2)
-                else:
+                elif stab_rate_analytic == 0:
+                    stab_rate = 0
+                elif stab_rate_analytic == 1:
                     stab_rate = 100
                     
                 file = open(AllOutput, 'a')
