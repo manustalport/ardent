@@ -474,7 +474,7 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
 
 #############################
 ################### MAIN CODE
-def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.2, GR=False, MassPrecision=0.5):
+def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.00025, GR=False, MassPrecision=0.5):
     """
     Computation of the dynamical detection limits
     
@@ -529,7 +529,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     if dt is None:
         dt = np.min(table_keplerian['period'])/(365.25*50) # By default, P_inner/50 in [yr]
     if T is None:
-        T = 3e4*np.max(table_keplerian['period'])/365.25 # By default, 10k * P_outer [yr]
+        T = 1e4*np.max(table_keplerian['period'])/365.25 # By default, 10k * P_outer [yr]
 
     P = np.array(table_keplerian['period'])/365.25              # [yr]
     K = np.array(table_keplerian['semi-amp'])
@@ -796,5 +796,4 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
         
     except rebound.Encounter:
         print(' [INFO] --Long term stability-- Simulation stopped! Close encounter. ')
-
 
