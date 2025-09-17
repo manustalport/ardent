@@ -289,7 +289,7 @@ class ARDENT_tableXY(object):
         plt.rc('font', size=12)
         plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=round(Mmax),cmap='gnuplot')
         ax = plt.colorbar(pad=0)
-        ax.ax.set_ylabel(str(percentage) + '% Mass limit detection', size='large')
+        ax.ax.set_ylabel(str(percentage) + '% Mass limit detection [' + str(MassUnits) + ' mass]', size='large')
 
 
     def ARDENT_FinalPlot(self, InjectionRecoveryFile=None, ExternalDataDL=None, DynDLfile=None, MassUnits='Earth', percentage=95, zoom_AU=1.0):
