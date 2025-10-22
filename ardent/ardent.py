@@ -105,7 +105,6 @@ class ARDENT_tableXY(object):
         phase_ML = np.sum([p.split('_')[0]=='ML' for p in param_names])
         phase_MA = np.sum([p.split('_')[0]=='MA' for p in param_names])
         phase_peritime = np.sum([p.split('_')[0]=='peritime' for p in param_names])
-#        e_min = np.sum([p.split('_')[0]=='elower' for p in param_names])
             
         for i in np.arange(1,1+nb_planet):
             p = param_values[param_names=='P_%.0f'%(i)][0]
@@ -115,7 +114,6 @@ class ARDENT_tableXY(object):
                 e = param_values[param_names=='elower_%.0f'%(i)][0]
             else:
                 e = param_values[param_names=='e_%.0f'%(i)][0]
-#            e = param_values[param_names=='e_%.0f'%(i)][0]
             omega = param_values[param_names=='w_%.0f'%(i)][0] # [deg]
             inc = param_values[param_names=='inc_%.0f'%(i)][0] # [deg]
             asc_node = param_values[param_names=='asc_node_%.0f'%(i)][0] # [deg]
@@ -307,7 +305,6 @@ class ARDENT_tableXY(object):
         """
         
         fig = plt.figure(figsize=(14,7))
-        #plt.title(self.starname)
         plt.rc('font', size=12)
         
         plt.subplot(1,2,1)
@@ -597,10 +594,6 @@ class ARDENT_tableXY(object):
                 self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
                 output_file = self.output_file_STDL1
                 self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
-                    
-#            elif DataDLfile is not None:
-#                subP_means, M95 = np.genfromtxt(DataDLfile, usecols=(0,1))
-#                rangeP = range_P
                 
         else:
             subP_means, M95 = ardf.Stat_DataDL(InjectionRecoveryFile, nbins=nbins, percentage=95)
@@ -640,7 +633,6 @@ class ARDENT_tableXY(object):
                     N_finegrids +=1
                     
                 elif p/2 < Pmin and p*2 > Pmax:
-#                    print('\n [WARNING] The period range is too small to apply a dense sampling on planet ' + str(l+1))
                     P_dense = 10**np.linspace(np.log10(Pmin), np.log10(Pmax), 100)
                     grid_p = np.hstack([grid_p,P_dense])
                     N_finegrids +=1
@@ -692,78 +684,8 @@ class ARDENT_tableXY(object):
         elif NlocalCPU == 0: #cluster
             ##### On the cluster, the code always overwrites potential old processings with the same name.
             shift = int(sys.argv[1])
-#                    n_jobs = int(sys.argv[2])
             ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
 
-
-#    def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None, MassUnits='Earth', axis_x_var='P'):
-#        """
-#        Plot the RV detection limits, both data-driven and dynamical detection limits.
-#
-#        Arguments (optional)
-#        ---------
-#        DataDLfile (string): filename of the data-driven detection limits file
-#        DynDLfile (string): filename of the dynamical detection limits file
-#        MassUnits (string): mass units with which to plot the detection limits. Can be 'Earth' (default) or 'Jupiter'.
-#        axis_x_var (string): x-axis of the detection limits plot. Can be either the period 'P' (default) or semi-major axis 'a'.
-#        """
-#        if DynDLfile is None and DataDLfile is None:
-#            P = np.genfromtxt(self.output_file_STDL2, usecols=(0), skip_header=int(2))
-#            M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
-##            P_dataDL = self.D95['period']
-##            M_dataDL = self.D95['mass']
-#            P_dataDL, M_dataDL = ardf.Stat_DataDL(self.output_file_DL, percentage=95, nbins=self.nbins, axis_y_var='M')
-#        elif DynDLfile is not None and DataDLfile is not None:
-#            P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
-#            M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(2))
-#            P_dataDL = np.genfromtxt(DataDLfile, usecols=(0), skip_header=int(2))
-#            M_dataDL = np.genfromtxt(DataDLfile, usecols=(1), skip_header=int(2))
-#        else:
-#            print(' [ERROR] Both DataDL and DynDL files must be given, or none.')
-#
-#        indexes = np.argsort(P)
-#        P = np.array(P)[indexes]
-#        M_stb = np.array(M_stb)[indexes]
-#
-#        keyword_x = 'period'
-#        xlabel = 'Period [d]'
-#        if axis_x_var == 'a':
-#            P = (P/365.25)**(2./3.) * ((self.mstar+M_stb*mE_S)/(1.+mE_S))**(1./3.)
-#            P_dataDL = (P_dataDL/365.25)**(2./3.) * ((self.mstar+M_dataDL*mE_S)/(1.+mE_S))**(1./3.)
-#            keyword_x = 'semimajor'
-#            xlabel = 'semi-maj axis [AU]'
-#
-#        if MassUnits == 'Jupiter':
-#            unit = mE_J # a conversion factor to have the mass in the right unit
-#            ylabel = 'Mass [M$_{Jup}$]'
-#        else:
-#            unit = 1 # by default, masses are expressed in M_Earth
-#            ylabel = 'Mass [M$_{\oplus}$]'
-#        M_stb = M_stb * unit
-#        M_dataDL = M_dataDL * unit
-#
-#        fig = plt.figure(figsize=(5,4))
-#        plt.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
-#        plt.plot(P, M_stb, ls='-', color='xkcd:fire engine red', lw=1, marker='o', ms=6, mfc='yellow', mew=1, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
-#        plt.fill_between(x= P, y1= M_stb, facecolor= "xkcd:fire engine red", lw=0., alpha=0.1)
-#        plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
-#        plt.xscale('log')
-#
-#        planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass'])
-#        planets = planets.loc[(planets[keyword_x]>np.min(P))&(planets[keyword_x]<np.max(P))]
-#        variable = np.array(planets['mass']) * unit
-#        variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
-#        plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=45,zorder=20)
-#        plt.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='D',s=65,zorder=22)
-#
-#        plt.rc('font', size=12)
-#        plt.xlabel(xlabel, size='x-large')
-#        plt.ylabel(ylabel, size='x-large')
-#        plt.tick_params(labelsize=12)
-#        plt.legend(loc='upper left')
-#        plt.tight_layout()
-#        plt.ylim(0,np.max(M_dataDL)+np.max(M_dataDL)/20)
-#        plt.savefig(self.tag+'FinalDetectionLimits.png', format='png', dpi = 300)
 
     def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None, MassUnits='Earth', axis_x_var='P',
                            inset_plot=False, zoom_xlim=None, zoom_ylim=None):
@@ -804,7 +726,6 @@ class ARDENT_tableXY(object):
             P_dataDL = (P_dataDL/365.25)**(2./3.) * ((self.mstar+M_dataDL*mE_S)/(1.+mE_S))**(1./3.)
             keyword_x = 'semimajor'
             xlabel = 'semi-maj axis [AU]'
-    #            xvar = (xvar/365.25)**(2./3.) * ((Mstar+mp*mE_S)/(1.+mE_S))**(1./3.)
 
         if MassUnits == 'Jupiter':
             unit = mE_J # a conversion factor to have the mass in the right unit
@@ -816,17 +737,14 @@ class ARDENT_tableXY(object):
         M_dataDL = M_dataDL * unit
 
         fig = plt.figure(figsize=(5,4))
-    #        plt.plot(P_dataDL, M_dataDL, color='xkcd:mahogany', alpha=0.6, lw=2, marker='o', mfc='white', ms=6, mew=1.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
-    #        plt.plot(P, M_stb, ls=':', color='xkcd:fire engine red', lw=2, marker='o', ms=4, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
-        plt.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2, label='RV') #color='xkcd:mahogany'darkgray goldenrod
-        plt.plot(P, M_stb, ls='-', color='xkcd:fire engine red', lw=1, marker='o', ms=6, mfc='yellow', mew=1, zorder=10, label='RV + stability') #color='xkcd:fire engine red'firebrick
+        plt.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2, label='RV') 
+        plt.plot(P, M_stb, ls='-', color='xkcd:fire engine red', lw=1, marker='o', ms=6, mfc='yellow', mew=1, zorder=10, label='RV + stability') 
         plt.fill_between(x= P, y1= M_stb, facecolor= "xkcd:fire engine red", lw=0., alpha=0.1)
         plt.grid(which='both', ls='--', linewidth=0.1, zorder=1)
         plt.xscale('log')
 
         planets = pd.DataFrame(self.planets,columns=['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass'])
         planets = planets.loc[(planets[keyword_x]>np.min(P))&(planets[keyword_x]<np.max(P))]
-    #        planets = planets.loc[(planets['period']>2.0)&(planets['period']<600.0)]
         variable = np.array(planets['mass']) * unit
         variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
         plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=45,zorder=20)
