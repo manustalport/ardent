@@ -46,16 +46,16 @@ def AmpStar(ms, P, K, e=0., i=90.):
     
     Arguments
     ---------
-    ms (float): stellar mass [M_Sun]
-    P (float): period of RV signal [days]
-    K (float): RV semi-amplitude [m/s]
-    e (float, optional): the orbital eccentricity (default=0)
-    i (float, optional): the orbital inclination [deg] (default=90)
+    ms (float or 1D array): stellar mass [M_Sun]
+    P (float or 1D array): period of RV signal [days]
+    K (float or 1D array): RV semi-amplitude [m/s]
+    e (float or 1D array, optional): the orbital eccentricity (default=0)
+    i (float or 1D array, optional): the orbital inclination [deg] (default=90)
     
     Ouptut
     ------
-    mp (float): planet mass [M_Earth]
-    a (float): semi-major axis of the planetary orbit [AU]
+    mp (float or 1D array): planet mass [M_Earth]
+    a (float or 1D array): semi-major axis of the planetary orbit [AU]
     """
     if i == 0.:
         print('[WARNING] Orbital inclination of at least one body set to 0 degrees')
