@@ -564,8 +564,8 @@ class ARDENT_tableXY(object):
         param_file (string): Name of the input file containing numerical integration parameters (in replacement of specifying them as arguments of this function)
         nbins (int): The number of period values with which to compute the data-driven and dynamical detection limits (default=15)
         Nphases (int): Number of orbital phases per injected (P, K) at which to compute the orbital stability (default=4)
-        inc_inject (float or string): Orbital inclination of the injected body. Either a value in degrees, or 'random' indicating uniform distribution of cosi between 0 and 1.
-        ecc_inject (float or string): Orbital eccentricity of the injected body. Either a value, or 'beta' indicating a random distribution following Kipping2013.
+        inc_inject (float or string): Orbital inclination of the injected body. Either fixed (float in [degrees]), or drawn from a random distribution. The latter can be uniform in cos(i) (inc_inject="random1"), or follow a Normal(90, sig=5) distribution truncated between 75 and 90 degrees (inc_inject="random2").
+        ecc_inject (float or string): Orbital eccentricity of the injected body. Either fixed (float), or drawn from a beta distribution following Kipping et al. (2013) (ecc_inject="beta").
         integration_time (float): Total integration time used to compute the orbital stability [yr] (default=Pouter*1e4)
         dt (foat): Integration timestep [yr] (default=Pinner/50)
         min_dist (float): Criterion on close-encounter [Hill_radius] (default=3)
