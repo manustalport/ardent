@@ -2,6 +2,7 @@ import os
 import pickle
 from datetime import datetime
 from random import uniform
+import scipy.stats as stats
 
 import numpy as np
 import pandas as pd
@@ -57,8 +58,9 @@ def AmpStar(ms, P, K, e=0., i=90.):
     mp (float or 1D array): planet mass [M_Earth]
     a (float or 1D array): semi-major axis of the planetary orbit [AU]
     """
-    if i == 0.:
-        print('[WARNING] Orbital inclination of at least one body set to 0 degrees')
+    if type(i) == float or type(i) == int:
+        if i == 0:
+            print('[WARNING] Orbital inclination of at least one body set to 0 degrees')
     
     i = ang_rad(i) # Conversion in  radians, in [-pi,pi[
     mp = (np.sqrt(1-e**2)/np.sin(i)) * (K/28.435) * ms**(2./3.) * (P/365.25)**(1./3.) # [M_Jup] -- valid for any e and i
@@ -70,7 +72,7 @@ def AmpStar(ms, P, K, e=0., i=90.):
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 1: data-driven detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
-def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(2000), Nphases=int(10), fapLevel=0.01):
+def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, ecc_inject, Nsamples, Nphases, fapLevel):
     """
     Function that executes planet injection-recovery tests in RV timeseries.
     
@@ -109,17 +111,24 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(
     detect_rate = np.zeros(Nsamples)
     phase = np.linspace(-np.pi, np.pi, num=Nphases, endpoint=False)
     
+    if type(ecc_inject) == float or type(ecc_inject) == int:
+        ecc_inject = np.zeros(Nsamples) + ecc_inject
+        w_inject = np.zeros(Nsamples)
+    elif ecc_inject == 'beta':
+        ecc_inject = np.random.beta(0.867,3.03,size=Nsamples)
+        w_inject = np.array([uniform(-np.pi, np.pi) for i in range(Nsamples)])
+        
     P = np.array([10**(uniform(np.log10(Pmin), np.log10(Pmax))) for i in range(Nsamples)])
     K = np.array([uniform(Kmin, Kmax) for i in range(Nsamples)])
-    M, a = AmpStar(Mstar, P, K, 0., inc_inject)
-
+    M, a = AmpStar(Mstar, P, K, ecc_inject, 90.) # msini, not mass, is the parameter constrained by observations and the one to plot on the data-driven detection limits
+        
     for i in tqdm(range(Nsamples)):
         detect = int(0)
         for j in range(Nphases):
-            if (rv == 0).all(): # i.e., if the array of RVs is made of zeros, in which case the residuals were not given ; only given are times + uncertainties
-                rv_simu = np.random.normal(0, rv_err) - K[i] * np.sin((t*2*np.pi/P[i])+phase[j])
+            if (rv == 0).all():
+                rv_simu = np.random.normal(0, rv_err) - K[i] * (np.cos(w_inject[i]+(t*2*np.pi/P[i])+phase[j]) + ecc_inject[i]*np.cos(w_inject[i]))
             else:
-                rv_simu = rv - K[i] * np.sin((t*2*np.pi/P[i])+phase[j])
+                rv_simu = rv - K[i] * (np.cos(w_inject[i]+(t*2*np.pi/P[i])+phase[j]) + ecc_inject[i]*np.cos(w_inject[i]))
 
             if 0.6*Pmin > 1.1:
                 period_start = 0.6*Pmin # Periodogram search starts at 40% below of Pmin
@@ -138,7 +147,17 @@ def DataDL(output_file, rvFile, Mstar, rangeP, rangeK, inc_inject, Nsamples=int(
 
         detect_rate[i] = detect / Nphases
     
-    output = {'P':P,'K':K,'M':M,'detect_rate':detect_rate,'Nsamples':Nsamples,'Nphases':Nphases,'Mstar':Mstar,'FAP':fapLevel*100,'rangeP':rangeP,'rangeK':rangeK,'inc_inject':inc_inject}
+    if type(inc_inject) == float or type(inc_inject) == int:
+        inc_inject = np.zeros(Nsamples) + inc_inject
+    elif inc_inject == 'random1':
+        inc_inject = np.array(np.arccos([uniform(0, 1) for i in range(Nsamples)])) * 180./np.pi
+    elif inc_inject == 'random2':
+        mu, sigma = 90., 5.
+        min, max = 75., 90.
+        inc_rand = stats.truncnorm((min-mu)/sigma, (max-mu)/sigma, loc=mu, scale=sigma)
+        inc_inject = np.array(inc_rand.rvs(Nsamples))
+        
+    output = {'P':P,'K':K,'M':M,'detect_rate':detect_rate,'Nsamples':Nsamples,'Nphases':Nphases,'Mstar':Mstar,'FAP':fapLevel*100,'rangeP':rangeP,'rangeK':rangeK,'inc_inject':inc_inject,'ecc_inject':ecc_inject,'w_inject':w_inject}
     pickle.dump(output,open(output_file,'wb'))
 
     file = open(output_dir+'Injection-recovery_tests.dat', 'w')
@@ -474,7 +493,7 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
 
 #############################
 ################### MAIN CODE
-def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, Mstar, T=None, dt=None, min_dist=3.0, max_dist=5.0, Nphases=4, max_drift_a=0.00025, GR=False, MassPrecision=0.5):
+def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, ecc_inject, Mstar, T, dt, min_dist, max_dist, Nphases, max_drift_a, GR, MassPrecision=0.5):
     """
     Computation of the dynamical detection limits
     
@@ -521,7 +540,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     M_lim100 = np.array(D95['mass']) # [M_Earth]
     a_lim100 = (P_inject/365.25)**(2./3.) * ((Mstar + M_lim100*mE_S)/(1+mE_S))**(1./3.) # [AU]
 
-    injected_body = np.array([P_inject[shift],a_lim100[shift],0,0,0,0,0,inc_inject,0,np.nan,M_lim100[shift]]) # ['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass']
+    injected_body = np.array([P_inject[shift],a_lim100[shift],0,0,0,0,0,90,0,np.nan,M_lim100[shift]]) # ['period','semimajor','mean_long','mean_anomaly','pericenter_time','ecc','periastron','inc','asc_node','semi-amp','mass']
     table_keplerian.loc[len(table_keplerian)] = injected_body
     index0 = np.where(np.sort(table_keplerian['semimajor'].values)==table_keplerian['semimajor'].values[-1])[0][0]
     table_keplerian = table_keplerian.sort_values(by='semimajor') # ---------- Sort the parameters by increasing a
@@ -555,6 +574,24 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     
     params = [a,phase,e,w,inc,O,M] # Keep the order of the elements! a,phase,e,w,inc,O,M
     phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, generate Nphases points with constant interval in [start, stop[ (the last value is excluded)
+    if type(inc_inject) == float or type(inc_inject) == int:
+        inc_inject = np.zeros(Nphases) + inc_inject
+    elif inc_inject == 'random1':
+        inc_inject = np.array(np.arccos([uniform(0, 1) for i in range(Nphases)])) * 180./np.pi
+    elif inc_inject == 'random2':
+        mu, sigma = 90., 5.
+        min, max = 75., 90.
+        inc_rand = stats.truncnorm((min-mu)/sigma, (max-mu)/sigma, loc=mu, scale=sigma)
+        inc_inject = np.array(inc_rand.rvs(Nphases))
+    
+    inc_inject = inc_inject * np.pi/180.
+    
+    if type(ecc_inject) == float or type(ecc_inject) == int:
+        ecc_inject = np.zeros(Nphases) + ecc_inject
+        w_inject = np.zeros(Nphases)
+    elif ecc_inject == 'beta':
+        ecc_inject = np.random.beta(0.867,3.03,size=Nphases)
+        w_inject = np.array([uniform(-np.pi, np.pi) for i in range(Nphases)])
     
     min_dist = min_dist * HillRad(a[0], M[0], Mstar)
     max_dist = max_dist * a[-1]
@@ -566,23 +603,28 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
     
     MMR11 = in_11MMR(P)
     if MMR11 == 0: # ARDENT does not consider the 1:1 MMR case
-        stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-        if 1 > stab_rate_analytic > 0: # i.e., if and only if the system (including the injected planet) is Hill AMD-unstable (but far from MMR overlap), we have to further test if the system is truly short-term unstable
-            crossing = OrbitCrossing(a, e)
-            if crossing == 1 and MMR_check(P) == 0: # If orbits are crossing with no planet pair close to MMR, for sure the system is unstable. No need of numerical simulations.
-                stab_rate = 0
-            else:
-                stab_rate_numeric = 0
-                for j in range(Nphases):
-                    phase[index0] = phases_inject[j]
-                    stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR) # stab_rate_numeric is a binary number: 0 = unstable, 1 = stable
-        
-                stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
+        stab_rate = 0
+        for j in range(Nphases):
+            phase[index0] = phases_inject[j]
+            e[index0] = ecc_inject[j]
+            w[index0] = w_inject[j]
+            inc[index0] = inc_inject[j]
+            
+            stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
+            
+            if stab_rate_analytic == 0: # in this case, the system is unstable (MMR overlap)
+                stab_rate += 0
+            elif stab_rate_analytic == 1: # in this case, the system is Hill-stable in the AMD framework
+                stab_rate += 100
+            elif 1 > stab_rate_analytic > 0: # i.e., if and only if the system (including the injected planet) is Hill AMD-unstable (but far from MMR overlap), we have to further test if the system is truly short-term unstable
+                crossing = OrbitCrossing(a, e)
+                if crossing == 1 and MMR_check(P) == 0: # If orbits are crossing with no planet pair close to MMR, for sure the system is unstable. No need of numerical simulations.
+                    stab_rate += 0
+                else:
+                    stab_rate_numeric = Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR) # stab_rate_numeric is a binary number: 0 = unstable, 1 = stable
+                    stab_rate += stab_rate_numeric * 100
+        stab_rate = round(stab_rate/Nphases, 2) # Rate of stable systems, in %
                 
-        elif stab_rate_analytic == 0: # in this case, the system is unstable (MMR overlap)
-            stab_rate = 0
-        elif stab_rate_analytic == 1: # in this case, the system is Hill-stable in the AMD framework
-            stab_rate = 100
     else: # In case any planet pair is close to 1:1MMR, we define the system as unstable
         stab_rate = 0
         
@@ -606,22 +648,27 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
 
                 if MMR11 == 0:
-                    stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-                    if 1 > stab_rate_analytic > 0:
-                        crossing = OrbitCrossing(a, e)
-                        if crossing==1 and MMR_check(P) == 0:
-                            stab_rate = 0.
-                        else:
-                            stab_rate_numeric = 0.
-                            for j in range(Nphases):
-                                phase[index0] = phases_inject[j]
-                                stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
-
-                            stab_rate = round((stab_rate_numeric / Nphases) * 100., 2) # Rate of stable systems, in %
-                    elif stab_rate_analytic == 0:
-                        stab_rate = 0
-                    elif stab_rate_analytic == 1:
-                        stab_rate = 100
+                    stab_rate = 0
+                    for j in range(Nphases):
+                        phase[index0] = phases_inject[j]
+                        e[index0] = ecc_inject[j]
+                        w[index0] = w_inject[j]
+                        inc[index0] = inc_inject[j]
+                        
+                        stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
+                        
+                        if stab_rate_analytic == 0: # in this case, the system is unstable (MMR overlap)
+                            stab_rate += 0
+                        elif stab_rate_analytic == 1: # in this case, the system is Hill-stable in the AMD framework
+                            stab_rate += 100
+                        elif 1 > stab_rate_analytic > 0:
+                            crossing = OrbitCrossing(a, e)
+                            if crossing == 1 and MMR_check(P) == 0:
+                                stab_rate += 0
+                            else:
+                                stab_rate_numeric = Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
+                                stab_rate += stab_rate_numeric * 100
+                    stab_rate = round(stab_rate/Nphases, 2) # Rate of stable systems, in %
                 else:
                     stab_rate = 0
                     
@@ -644,26 +691,31 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
             else:
                 M[index0] = (M_max+M_min) / 2.
                 a[index0] = P_inject[shift]**(2./3.) * ((Mstar+M[index0])/(1.+mE_S))**(1./3.)
-                stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
-                if 1 > stab_rate_analytic > 0:
-                    crossing = OrbitCrossing(a, e)
-                    if crossing==1 and MMR_check(P) == 0:
-                        stab_rate = 0.
-                    else:
-                        stab_rate_numeric = 0.
-                        for j in range(Nphases):
-                            phase[index0] = phases_inject[j]
-                            stab_rate_numeric += Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
-                        stab_rate = round((stab_rate_numeric / Nphases) * 100., 2)
-                elif stab_rate_analytic == 0:
-                    stab_rate = 0
-                elif stab_rate_analytic == 1:
-                    stab_rate = 100
+                stab_rate = 0
+                for j in range(Nphases):
+                    phase[index0] = phases_inject[j]
+                    e[index0] = ecc_inject[j]
+                    w[index0] = w_inject[j]
+                    inc[index0] = inc_inject[j]
                     
+                    stab_rate_analytic = AnalyticStability(Mstar, a, e, inc, M)
+                    if stab_rate_analytic == 0: # in this case, the system is unstable (MMR overlap)
+                        stab_rate += 0
+                    elif stab_rate_analytic == 1: # in this case, the system is Hill-stable in the AMD framework
+                        stab_rate += 100
+                    elif 1 > stab_rate_analytic > 0:
+                        crossing = OrbitCrossing(a, e)
+                        if crossing == 1 and MMR_check(P) == 0:
+                            stab_rate += 0
+                        else:
+                            stab_rate_numeric = Stability(params, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift_a, GR)
+                            stab_rate += stab_rate_numeric * 100
+                stab_rate = round(stab_rate/Nphases, 2) # Rate of stable systems, in %
+
                 file = open(AllOutput, 'a')
                 file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
                 file.close()
-
+            
                 if stab_rate > 0.1:
                     M_min = M[index0]
 
@@ -674,7 +726,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
                 Mlim = M_max
 
             q += 1
-
+            
         file = open(DynDL_file, 'a')
         file.write(str(P_inject[shift]*365.25) + ' ' + str(Mlim/mE_S) + ' ' + str(stab_rate) + '\n')
         file.close()
@@ -685,6 +737,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, M
         file.close()
         
     print(' [INFO] Completed stability estimation at period %f[d] (bin %.0f / %.0f) <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
+
 
 
 #############################
