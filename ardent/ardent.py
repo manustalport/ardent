@@ -5,7 +5,7 @@ import os
 import pickle
 import sys
 
-import ardent_functions as ardf
+from . import ardent_functions as ardf
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
