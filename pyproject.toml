@@ -13,8 +13,8 @@ dependencies = [
     "numpy",
     "matplotlib",
     "pandas",
-    "rebound=4.4.3",
-    "reboundx=4.3.0",
+    "rebound==4.4.3",
+    "reboundx==4.3.0",
     "joblib",
     "tqdm", 
     "PyAstronomy"
@@ -32,9 +32,6 @@ build-backend = 'setuptools.build_meta'
 write_to = "ardent/_version.py"
 
 [tool.setuptools]
-zip_safe = false
+include-package-data = true
 
 [tool.setuptools.packages.find]
-
-[tool.setuptools_scm]
-write_to = "ardent/version.py"
