@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name='ardent',
-    version='0.1.0',
+    version='2.2.0',
     description='A Python package for exoplanet dynamical detection limits from RV data',
 
     url='https://github.com/manustalport/ardent',
