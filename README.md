@@ -32,6 +32,8 @@ The code was tested with Python 3.11, rebound 4.4.3 and reboundx 4.3.0.
 
 ARDENT is installable on Linux and MacOS distributions.
 
+Note: Alternatively, after cloning this repository, you can simply do a "pip install ." in the root directory (virtual environment recommended). Once installed, import ardent as "from ardent import ardent". 
+
 ### Example use 
 Follow the steps of the ardent/hands-on_tutorial.ipynb file, that will guide you through the various ARDENT functions. 
 
