@@ -44,6 +44,6 @@ Follow the steps of the ardent/hands-on_tutorial.ipynb file, that will guide you
 ### Citations
 If you use ARDENT for your research, please cite: 
 
-+ Stalport M., Cretignier M., Naponiello L., and Van Grootel V. 2025, A&A, arXiv:2509.13521  
++ Stalport M., Cretignier M., Naponiello L., and Van Grootel V. 2025, A&A, 702, L2  
 [*ARDENT: A Python package for fast dynamical detection limits with radial velocities*](https://arxiv.org/abs/2509.13521) 
 
