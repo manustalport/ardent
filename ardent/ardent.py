@@ -638,27 +638,6 @@ class ARDENT_tableXY(object):
             output_file = self.output_file_STDL1
             self.output_file_STDL2 = self.tag+"DynamicalDL_%d_Run%d.dat"%(version_dataDL,version_dynDL)
             
-#            version = int(0)
-#            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
-#            output_file = self.output_file_STDL1
-#            self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
-#            while os.path.exists(self.output_file_STDL1):
-#                version += 1
-#                self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
-#                output_file = self.output_file_STDL1
-#                self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
-#
-#        else:
-#            subP_means, M95 = ardf.Stat_DataDL(InjectionRecoveryFile, nbins=nbins, percentage=95)
-#            output = pd.read_pickle(InjectionRecoveryFile)
-#            rangeP = output['rangeP']
-#
-#            split_filename = InjectionRecoveryFile.split('_')[-1]
-#            version = int(split_filename.split('.')[0])
-#            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
-#            output_file = self.output_file_STDL1
-#            self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
-            
         D95 = pd.DataFrame({'period':subP_means,'mass':M95})
         self.D95 = D95
 
