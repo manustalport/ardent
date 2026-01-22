@@ -1,4 +1,4 @@
-__version__ = '2.2.0'
+__version__ = '1.2.1'
 
 import getopt
 import os
@@ -6,6 +6,7 @@ import pickle
 import sys
 
 from . import ardent_functions as ardf
+# import ardent_functions as ardf
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
@@ -53,6 +54,14 @@ class ARDENT_tableXY(object):
     def ARDENT_Plot(self, xUnits='BJD-2457000', yUnits='m/s', rangePeriodogram=[2.,200.], fapLevel=0.01, new=True):
         """
         Plots the residual RV timeseries and generalised Lomb-Scargle periodogram.
+        
+        Arguments (optional)
+        ---------
+        xUnits (string): Units of the RV timeseries timestamps (default='BJD-2457000').
+        yUnits (string): RV units (default='m/s').
+        rangePeriodogram (1D array): Period range [Pmin, Pmax] used for the periodogram computation, with same units as xUnits (default=[2,200]).
+        fapLevel (float): False Alarm Probability (FAP) level to superimpose to the periodogram (default=0.01, i.e. 1%).
+        new (bool): If True, saves the plots in the output folder (default=True).
         """
         if new:
             fig = plt.figure(figsize=(11,3.5))
@@ -244,22 +253,35 @@ class ARDENT_tableXY(object):
             plt.ylim(-xlim,xlim)
 
 
-    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, x_au=1., detection_limit='RV', interp='zero'):
+    def ARDENT_Plot_MapUpperMass(self, InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, nbins, x_au=1., detection_limit='RV', interp='nearest-up', zoom=False):
         """
         Plot the grid of mass detection limits in the orbital plane.
+        
+        Arguments
+        ---------
+        InjectionRecoveryFile (string): output file name of the injection-recovery tests
+        ExternalDataDL (2D array): Contains the data-driven detection limits obtained from an external source, otherwise it is set to None (default) if ARDENT derives them. It is of the form [Periods, MassLimits], where Periods and MassLimits are the 1D arrays of period bins and mass detection limits.
+        DynDLfile (string): name of the file containing the dynamical detection limits
+        MassUnits (string): mass units with which to plot the detection limits. Can be 'Earth' (default) or 'Jupiter'.
+        percentage (float): detection percentage with which to plot the mass detection limits (default=95)
+        nbins (int): Number of bins that was used to compute the data-driven detection limits (default=15).
+        x_au (float, optional): Limits of the plot in the orbital plane [AU] (default=1AU).
+        detection_limit (string, optional): Specifies which detection limits to compute, 'RV' (default) for data-driven, otherwise will plot the dynamical detection limits.
+        interp (string, optional): The interpolation technique to link the detection limits data points (default='nearest-up').
+        zoom (bool, optional): Specifies whether to plot a zoomed-in picture (True) or not (False). Default=False.
         """
 
         mstar = self.mstar
 
         if InjectionRecoveryFile is None:
             if ExternalDataDL is None:
-                statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=percentage)
+                statistic = ardf.Stat_DataDL(self.output_file_DL, percentage=percentage, nbins=nbins)
                 Mmax = max(statistic[1])
             else:
                 statistic = ExternalDataDL
                 Mmax = max(statistic[1])
         elif InjectionRecoveryFile is not None:
-            statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=percentage)
+            statistic = ardf.Stat_DataDL(InjectionRecoveryFile, percentage=percentage, nbins=nbins)
             Mmax = max(statistic[1])
 
         if detection_limit!='RV':
@@ -268,8 +290,8 @@ class ARDENT_tableXY(object):
                 M_stb = np.genfromtxt(self.output_file_STDL2, usecols=(1), skip_header=int(2))
                 statistic = [P,M_stb]
             elif DynDLfile is not None:
-                P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(2))
-                M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(2))
+                P = np.genfromtxt(DynDLfile, usecols=(0), skip_header=int(3))
+                M_stb = np.genfromtxt(DynDLfile, usecols=(1), skip_header=int(3))
                 statistic = [P,M_stb]
                 
         a = (statistic[0]/365.25)**(2./3.) * ((mstar+statistic[1]*mE_S)/(1.+mE_S))**(1./3.)
@@ -278,6 +300,9 @@ class ARDENT_tableXY(object):
             statistic[1] = statistic[1] * mE_J # Conversion from Earth to Jupiter masses
             Mmax = Mmax * mE_J
 
+        if zoom == False: # i.e., if we do not want to plot a close-in part of the 2D space but instead, we want to plot the whole picture.
+            x_au = max(x_au, max(a))
+#            x_au += x_au*0.1
         grid = np.linspace(-x_au,x_au,1000)
         Gx,Gy = np.meshgrid(grid,grid)
         R = np.ravel(np.sqrt(Gx**2+Gy**2))
@@ -286,11 +311,13 @@ class ARDENT_tableXY(object):
 
         plt.rc('font', size=12)
         plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=round(Mmax),cmap='gnuplot')
+        plt.xlim(-x_au,x_au)
+        plt.ylim(-x_au,x_au)
         ax = plt.colorbar(pad=0)
         ax.ax.set_ylabel(str(percentage) + '% Mass limit detection [' + str(MassUnits) + ' mass]', size='large')
 
 
-    def ARDENT_FinalPlot(self, InjectionRecoveryFile=None, ExternalDataDL=None, DynDLfile=None, MassUnits='Earth', percentage=95, zoom_AU=1.0):
+    def ARDENT_FinalPlot(self, InjectionRecoveryFile=None, ExternalDataDL=None, DynDLfile=None, MassUnits='Earth', percentage=95, nbins=15, zoom_AU=1.0):
         """
         Plot the mass detection limits in the orbital plane, together with the planetary orbits of the known planets. This function produces and compares plots of data-driven and dynamical detection limits.
         
@@ -301,38 +328,41 @@ class ARDENT_tableXY(object):
         DynDLfile (string): name of the file containing the dynamical detection limits
         MassUnits (string): mass units with which to plot the detection limits. Can be 'Earth' (default) or 'Jupiter'.
         percentage (float): detection percentage with which to plot the mass detection limits (default=95)
+        nbins (int): Number of bins that was used to compute the data-driven detection limits (default=15).
         zoom_AU (float): Limits (in [AU]) of the zoomed-in version of the plot.
         """
         
-        fig = plt.figure(figsize=(14,7))
+        fig = plt.figure(figsize=(14,6))
         #plt.title(self.starname)
         plt.rc('font', size=12)
         
         plt.subplot(1,2,1)
         self.ARDENT_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV')
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, nbins, x_au=xlim, detection_limit='RV')
+        plt.gca().set_aspect('auto')
         plt.title('RV detection limits', size='large')
 
         plt.subplot(1,2,2)
         self.ARDENT_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV+Stab')
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, nbins, x_au=xlim, detection_limit='RV+Stab')
+        plt.gca().set_aspect('auto')
         plt.title('RV + stability detection limits', size='large')
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
         plt.savefig(self.tag+'Summary_analysis.png', format='png', dpi = 300)
 
-        fig = plt.figure(figsize=(14,7))
+        fig = plt.figure(figsize=(14,6))
 
         plt.subplot(1,2,1)
         self.ARDENT_PlotPlanets(new=False,savefig=False,legend=False)
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV')
-        plt.xlim(-zoom_AU,zoom_AU) ; plt.ylim(-zoom_AU,zoom_AU)
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, nbins, x_au=zoom_AU, detection_limit='RV', zoom=True)
+        plt.gca().set_aspect('auto')
         plt.title('RV detection limits', size='large')
 
         plt.subplot(1,2,2)
         self.ARDENT_PlotPlanets(new=False,savefig=False, legend=False)
-        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, x_au=xlim, detection_limit='RV+Stab')
-        plt.xlim(-zoom_AU,zoom_AU) ; plt.ylim(-zoom_AU,zoom_AU)
+        self.ARDENT_Plot_MapUpperMass(InjectionRecoveryFile, ExternalDataDL, DynDLfile, MassUnits, percentage, nbins, x_au=zoom_AU, detection_limit='RV+Stab', zoom=True)
+        plt.gca().set_aspect('auto')
         plt.title('RV + stability detection limits', size='large')
 
         plt.subplots_adjust(left=0.09,right=0.95,wspace=0.20)
@@ -589,26 +619,24 @@ class ARDENT_tableXY(object):
                 subP_means, M95 = ExternalDataDL[0], ExternalDataDL[1]
                 rangeP = np.array([subP_means[0], subP_means[-1]])
                 
-            version = int(0)
-            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
-            output_file = self.output_file_STDL1
-            self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
-            while os.path.exists(self.output_file_STDL1):
-                version += 1
-                self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
-                output_file = self.output_file_STDL1
-                self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
+            InjectionRecoveryFile = self.output_file_DL
                 
         else:
             subP_means, M95 = ardf.Stat_DataDL(InjectionRecoveryFile, nbins=nbins, percentage=95)
             output = pd.read_pickle(InjectionRecoveryFile)
             rangeP = output['rangeP']
             
-            split_filename = InjectionRecoveryFile.split('_')[-1]
-            version = int(split_filename.split('.')[0])
-            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d.dat"%version
+        split_filename = InjectionRecoveryFile.split('_')[-1]
+        version_dataDL = int(split_filename.split('.')[0])
+        version_dynDL = int(0)
+        self.output_file_STDL1 = self.tag+"AllStabilityRates_%d_Run%d.dat"%(version_dataDL,version_dynDL)
+        output_file = self.output_file_STDL1
+        self.output_file_STDL2 = self.tag+"DynamicalDL_%d_Run%d.dat"%(version_dataDL,version_dynDL)
+        while os.path.exists(self.output_file_STDL1):
+            version_dynDL += 1
+            self.output_file_STDL1 = self.tag+"AllStabilityRates_%d_Run%d.dat"%(version_dataDL,version_dynDL)
             output_file = self.output_file_STDL1
-            self.output_file_STDL2 = self.tag+"DynamicalDL_%d.dat"%version
+            self.output_file_STDL2 = self.tag+"DynamicalDL_%d_Run%d.dat"%(version_dataDL,version_dynDL)
             
         D95 = pd.DataFrame({'period':subP_means,'mass':M95})
         self.D95 = D95
@@ -676,19 +704,20 @@ class ARDENT_tableXY(object):
                 if relaunch:
                     print(' [INFO] An old processing has been found. Overwriting the output files (relaunch=True). ')
                     
-                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR) for shift in range(N))
+                    dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, nbins, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR) for shift in range(N))
                     
                 else:
                     print(' [INFO] An old processing has been found, and relaunch=False. First delete or rename the output files below prior to launch a new processing, or set relaunch to True: \n %s \n %s \n '%(self.output_file_STDL1, self.output_file_STDL2))
                     
             else:
-                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR) for shift in range(N))
+                dustbin = Parallel(n_jobs=NlocalCPU)(delayed(ardf.DynDL)(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, nbins, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR) for shift in range(N))
 
         elif NlocalCPU == 0: #cluster
             ##### On the cluster, the code always overwrites potential old processings with the same name.
             shift = int(sys.argv[1])
-            ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
+            ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, nbins, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
 
+        print(' [INFO] DynDL run ended. ') 
 
 
     def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None, MassUnits='Earth', axis_x_var='P',

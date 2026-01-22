@@ -493,7 +493,7 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
 
 #############################
 ################### MAIN CODE
-def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, ecc_inject, Mstar, T, dt, min_dist, max_dist, Nphases, max_drift_a, GR, MassPrecision=0.5):
+def DynDL(shift, output_file1, output_file2, keplerian_table, D95, nbins, inc_inject, ecc_inject, Mstar, T, dt, min_dist, max_dist, Nphases, max_drift_a, GR, MassPrecision=0.5):
     """
     Computation of the dynamical detection limits
     
@@ -522,6 +522,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, e
     # --- If this is the first call to this function, create the output files
     if shift == int(0):
         file = open(AllOutput, 'a')
+        file.write('Simulation parameters  ---  N_bins:'+str(nbins) + ' Nphases:'+str(Nphases) + ' integration_time:'+str(T) + ' integ_timestep:'+str(dt) + ' min_dist:'+str(min_dist) + ' max_dist:'+str(max_dist) + ' max_drift_a:'+str(max_drift_a) + ' GR:'+str(GR) + ' inc_inject:'+str(inc_inject) + ' ecc_inject:'+str(ecc_inject) + ' MassPrecision:'+str(MassPrecision) + '\n')
         file.write('Period Mass Stability_rate' + '\n')
         file.write('------ ---- --------------' + '\n')
         file.close()
@@ -599,7 +600,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, e
     P_inject = P_inject/365.25
 
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
-    print('\n [INFO] Processing stability estimation at period %f[d] (bin %.0f / %.0f)  <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
+    # print('\n [INFO] Processing stability estimation at period %f[d] (bin %.0f / %.0f)  <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
     
     MMR11 = in_11MMR(P)
     if MMR11 == 0: # ARDENT does not consider the 1:1 MMR case
@@ -736,7 +737,8 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, inc_inject, e
         file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
         file.close()
         
-    print(' [INFO] Completed stability estimation at period %f[d] (bin %.0f / %.0f) <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
+    # print(' [INFO] Completed stability estimation at period %f[d] (bin %.0f / %.0f) <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
+
 
 
 
