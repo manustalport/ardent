@@ -1,7 +1,7 @@
 # Changelog
 
 ### Version 1.2.1
-* Solved issues with plots of detection limits in the orbital plane (`ARDENT_FinalPlot` function): resolution preserved in zoomed-in plots, no truncation of mass limits, X and Y axes have identical ranges, adjusted the interpolation method, parameter 'nbins' added to the function to enable modifying the number of bins of the 'RV only' plot. 
+* Solved issues with plots of detection limits in the orbital plane (`ARDENT_FinalPlot` function): resolution preserved in zoomed-in plots, no truncation of mass limits, X and Y axes have identical ranges, adjusted the interpolation method, parameter `nbins` added to the function to enable modifying the number of period bins of the 'RV only' plot. 
 * Introduction of a version number for dynamical runs. This enables to re-run dynamical detection limits with different simulation parameters and keep all former results in memory.
 * Updated tutorial Jupyter notebook. 
 
