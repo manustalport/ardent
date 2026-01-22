@@ -1,4 +1,4 @@
-![ARDENT Logo](logo/ARDENTlogo.png)
+![ARDENT Logo](ARDENT_Wbg.png)
 
 # ARDENT
 The Algorithm for the Refinement of DEtection limits via N-body stability Threshold (ARDENT) is a python package for the computation of exoplanet detection limits from radial velocity data. In addition to the classic data-driven detection limits, ARDENT includes the orbital stability constraint (what we call dynamical detection limits). The final output is a more constraining detection limits curve, taking into account both the detectability of potential planets and their dynamical plausibility. 
