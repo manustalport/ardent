@@ -717,6 +717,7 @@ class ARDENT_tableXY(object):
             shift = int(sys.argv[1])
             ardf.DynDL(shift, self.output_file_STDL1, self.output_file_STDL2, table_keplerian, D95, nbins, inc_inject, ecc_inject, self.mstar, T=integration_time, dt=dt, min_dist=min_dist, max_dist=max_dist, Nphases=Nphases, max_drift_a=max_drift_a, GR=GR)
 
+        print(' [INFO] DynDL run ended. ') 
 
 
     def ARDENT_Plot_StabDL(self, DataDLfile=None, DynDLfile=None, MassUnits='Earth', axis_x_var='P',
