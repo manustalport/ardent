@@ -600,7 +600,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, nbins, inc_in
     P_inject = P_inject/365.25
 
     # ---------- Start the iterative process to find the minimum mass at which stability rate = 0%
-    print('\n [INFO] Processing stability estimation at period %f[d] (bin %.0f / %.0f)  <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
+    # print('\n [INFO] Processing stability estimation at period %f[d] (bin %.0f / %.0f)  <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
     
     MMR11 = in_11MMR(P)
     if MMR11 == 0: # ARDENT does not consider the 1:1 MMR case
@@ -737,7 +737,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, nbins, inc_in
         file.write(str(P_inject[shift]*365.25) + ' ' + str(M[index0]/mE_S) + ' ' + str(stab_rate) + '\n')
         file.close()
         
-    print(' [INFO] Completed stability estimation at period %f[d] (bin %.0f / %.0f) <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
+    # print(' [INFO] Completed stability estimation at period %f[d] (bin %.0f / %.0f) <---------'%(P_inject[shift]*365.25,shift+1,len(D95['period'])))
 
 
 
