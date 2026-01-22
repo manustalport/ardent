@@ -32,6 +32,8 @@ The code was tested with Python 3.11, rebound 4.4.3 and reboundx 4.3.0.
 
 ARDENT is installable on Linux and MacOS distributions.
 
+Note: Alternatively, after cloning this repository, you can simply do a "pip install ." in the root directory (virtual environment recommended). Once installed, import ardent as "from ardent import ardent". 
+
 ### Example use 
 Follow the steps of the ardent/hands-on_tutorial.ipynb file, that will guide you through the various ARDENT functions. 
 
@@ -42,5 +44,6 @@ Follow the steps of the ardent/hands-on_tutorial.ipynb file, that will guide you
 ### Citations
 If you use ARDENT for your research, please cite: 
 
-Stalport, et al. 2025, submitted to A&A: ARDENT -- A Python package for fast dynamical detection limits with radial velocities 
++ Stalport M., Cretignier M., Naponiello L., and Van Grootel V. 2025, A&A, 702, L2  
+[*ARDENT: A Python package for fast dynamical detection limits with radial velocities*](https://ui.adsabs.harvard.edu/abs/2025A%26A...702L...2S/abstract) 
 
