@@ -47,3 +47,5 @@ If you use ARDENT for your research, please cite:
 + Stalport M., Cretignier M., Naponiello L., and Van Grootel V. 2025, A&A, 702, L2  
 [*ARDENT: A Python package for fast dynamical detection limits with radial velocities*](https://ui.adsabs.harvard.edu/abs/2025A%26A...702L...2S/abstract) 
 
+#### Logo 
+A creation of the awesome @psychedelic.kiss
