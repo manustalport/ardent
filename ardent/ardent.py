@@ -615,19 +615,21 @@ class ARDENT_tableXY(object):
                 subP_means, M95 = ardf.Stat_DataDL(self.output_file_DL, nbins=nbins, percentage=95)
                 output = pd.read_pickle(self.output_file_DL)
                 rangeP = output['rangeP']
+                InjectionRecoveryFile = self.output_file_DL
+                split_filename = InjectionRecoveryFile.split('_')[-1]
+                version_dataDL = int(split_filename.split('.')[0])
             else: # ARDENT recomputes data-driven detection limits (with nbins bins) prior to computing the dynamical detection limits. It is possible to skip the ARDENT computation of data DL, in which case ExternalDataDL must be provided.
                 subP_means, M95 = ExternalDataDL[0], ExternalDataDL[1]
                 rangeP = np.array([subP_means[0], subP_means[-1]])
-                
-            InjectionRecoveryFile = self.output_file_DL
-                
+                version_dataDL = int(0)
+                                
         else:
             subP_means, M95 = ardf.Stat_DataDL(InjectionRecoveryFile, nbins=nbins, percentage=95)
             output = pd.read_pickle(InjectionRecoveryFile)
             rangeP = output['rangeP']
+            split_filename = InjectionRecoveryFile.split('_')[-1]
+            version_dataDL = int(split_filename.split('.')[0])
             
-        split_filename = InjectionRecoveryFile.split('_')[-1]
-        version_dataDL = int(split_filename.split('.')[0])
         version_dynDL = int(0)
         self.output_file_STDL1 = self.tag+"AllStabilityRates_%d_Run%d.dat"%(version_dataDL,version_dynDL)
         output_file = self.output_file_STDL1
