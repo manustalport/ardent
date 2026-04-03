@@ -60,7 +60,7 @@ def AmpStar(ms, P, K, e=0., i=90.):
     """
     if type(i) == float or type(i) == int:
         if i == 0:
-            print('[WARNING] Orbital inclination of at least one body set to 0 degrees')
+            print('[WARNING] Orbital inclination of at least one body set to 0 degrees!')
     
     i = ang_rad(i) # Conversion in  radians, in [-pi,pi[
     mp = (np.sqrt(1-e**2)/np.sin(i)) * (K/28.435) * ms**(2./3.) * (P/365.25)**(1./3.) # [M_Jup] -- valid for any e and i
@@ -69,6 +69,32 @@ def AmpStar(ms, P, K, e=0., i=90.):
     a = (P/365.25)**(2./3.) * ((ms+mp*mE_S)/(1.+mE_S))**(1./3.)
 
     return mp, a
+    
+def RV_SemiAmp(ms, mp, P, e=0., i=90.):
+    """
+    Function computing the RV semi-amplitude given planet mass.
+    
+    Arguments
+    ---------
+    ms (float or 1D array): stellar mass [M_Sun]
+    mp (float or 1D array): planet mass [M_Earth]
+    P (float or 1D array): orbital period [days]
+    e (float or 1D array, optional): the orbital eccentricity (default=0)
+    i (float or 1D array, optional): the orbital inclination [deg] (default=90)
+    
+    Output
+    ------
+    k (float or 1D array): RV semi-amplitude [m/s]
+    """
+    if type(i) == float or type(i) == int:
+        if i == 0:
+            print('[WARNING] Orbital inclination of at least one body set to 0 degrees! For edge-on, set i to 90 deg.')
+    
+    i = ang_rad(i) # Conversion in  radians, in [-pi,pi[
+    k = (28.4329/np.sqrt(1-e**2)) * mp*mE_J*np.sin(i) * ms**(-2./3.) * (P/365.25)**(-1./3.)
+    
+    return k
+    
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MODULE 1: data-driven detection limits %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% #
@@ -421,27 +447,25 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
     
     sim = rebound.Simulation()
     sim.add(m=Mstar)
-    
-    if phase_param == 'mean_long': # Mean Longitude is provided
-        sim.add(m=M[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
+
+    for q in range(Nbodies):
+        ### Mean longitude
+        if phase_param[q] == 'mean_long' and q == 0:
+            sim.add(m=M[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+        elif phase_param[q] == 'mean_long' and q > 0:
             sim.add(primary=sim.particles[0], m=M[q], a=a[q], l=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-            q += 1
-            
-    elif phase_param == 'pericenter_time': # Time of pericenter passage is provided
-        sim.add(m=M[0], a=a[0], T=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
+        ### Time of pericenter
+        elif phase_param[q] == 'pericenter_time' and q == 0:
+            sim.add(m=M[0], a=a[0], T=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+        elif phase_param[q] == 'pericenter_time' and q > 0:
             sim.add(primary=sim.particles[0], m=M[q], a=a[q], T=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-            q += 1
-            
-    else: # Mean Anomaly is provided
-        sim.add(m=M[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
+        ### Mean anomaly
+        elif phase_param[q] == 'mean_anomaly' and q == 0:
+            sim.add(m=M[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
+        elif phase_param[q] == 'mean_anomaly' and q > 0:
             sim.add(primary=sim.particles[0], m=M[q], a=a[q], M=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-            q += 1
+
+
       
     sim.move_to_com()
     sim.dt = dt * 2*np.pi # Conversion to rebound units: 1yr = 2pi
@@ -559,20 +583,23 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, nbins, inc_in
     inc = ang_rad(np.array(table_keplerian['inc']))
     M = np.array(table_keplerian['mass']) *mE_S                # [MSun]
     a = np.array(table_keplerian['semimajor'])                 # [AU]
-    
+
     mean_long = np.array(table_keplerian['mean_long'])
     mean_anomaly = np.array(table_keplerian['mean_anomaly'])
     peri_time = np.array(table_keplerian['pericenter_time'])
-    if np.sum(np.isnan(mean_long)) == 0:
-        phase = ang_rad(mean_long)
-        phase_param = 'mean_long'
-    elif np.sum(np.isnan(peri_time)) == 0:
-        phase = ang_rad(peri_time)
-        phase_param = 'pericenter_time'
-    else:
-        phase = ang_rad(mean_anomaly)
-        phase_param = 'mean_anomaly'
-    
+    phase = np.zeros(Nplanets+1) # Planets + the injected one
+    phase_param = []
+    for i in range(Nplanets+1):
+        if np.isnan(mean_long[i]) == False: # This condition is always met for the injected planet, since all phase angles are set to 0 at this stage (assigned different values below). Thus, it is always mean_long that is used for the injected planet.
+            phase[i] = ang_rad(mean_long[i]) # Angle units in REBOUND are radians.
+            phase_param = np.append(phase_param, 'mean_long')
+        elif np.isnan(peri_time[i]) == False:
+            phase[i] = (peri_time[i]/365.25) * 2*np.pi # Time units in REBOUND are 2pi/yr.
+            phase_param = np.append(phase_param, 'pericenter_time')
+        else:
+            phase[i] = ang_rad(mean_anomaly[i]) # Angle units in REBOUND are radians.
+            phase_param = np.append(phase_param, 'mean_anomaly')
+            
     params = [a,phase,e,w,inc,O,M] # Keep the order of the elements! a,phase,e,w,inc,O,M
     phases_inject = np.linspace(-np.pi, np.pi, Nphases, endpoint=False) # With endpoint=False, generate Nphases points with constant interval in [start, stop[ (the last value is excluded)
     if type(inc_inject) == float or type(inc_inject) == int:
@@ -589,7 +616,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, nbins, inc_in
     
     if type(ecc_inject) == float or type(ecc_inject) == int:
         ecc_inject = np.zeros(Nphases) + ecc_inject
-        w_inject = np.zeros(Nphases)
+        w_inject = np.zeros(Nphases) + np.pi/4 # Default is 90deg (in rad for REBOUND)
     elif ecc_inject == 'beta':
         ecc_inject = np.random.beta(0.867,3.03,size=Nphases)
         w_inject = np.array([uniform(-np.pi, np.pi) for i in range(Nphases)])
@@ -851,4 +878,6 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
         
     except rebound.Encounter:
         print(' [INFO] --Long term stability-- Simulation stopped! Close encounter. ')
+
+
 
