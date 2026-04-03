@@ -1,12 +1,12 @@
-__version__ = '1.2.1'
+__version__ = '1.2.2'
 
 import getopt
 import os
 import pickle
 import sys
 
-from . import ardent_functions as ardf
-# import ardent_functions as ardf
+#from . import ardent_functions as ardf
+import ardent_functions as ardf
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
@@ -145,7 +145,7 @@ class ARDENT_tableXY(object):
         self.ARDENT_ShowPlanets()
 
 
-    def ARDENT_AddPlanets(self, p=365.25, semi_major=np.nan, mean_long=0.0, mean_anomaly=np.nan, peri_time=np.nan, e=0.0, elower=np.nan, omega=0.0, inc=90.0, asc_node=0.0, k=0.10, mass=np.nan):
+    def ARDENT_AddPlanets(self, p=np.nan, semi_major=np.nan, mean_long=np.nan, mean_anomaly=np.nan, peri_time=np.nan, e=np.nan, elower=np.nan, omega=np.nan, inc=90.0, asc_node=0.0, k=np.nan, mass=np.nan):
         """
         Add a planet to ARDENT, by specifying its mass and orbital elements. Either the mean_long, mean_anomaly, or time of pericenter passage is needed.
         
@@ -155,32 +155,58 @@ class ARDENT_tableXY(object):
             semi_major : semi_major axis [AU]
             mean_long : mean longitude [deg]
             mean_anomaly : mean anomaly [deg]
-            peri_time : time of pericenter passage
+            peri_time : time of pericenter passage [days]
             e : orbital eccentricity
             elower (optional) : The lower orbital eccentricity compatible with the observations, typically the 1-sigma lower limit. In case of significant uncertainties on the eccentricities, it is recommended to provide this parameter.
             omega : argument of periastron [deg]
-            inc : orbital inclination [deg]
-            asc_node : longitude of the ascending node [deg]
+            inc : orbital inclination [deg] (default=90 deg).
+            asc_node : longitude of the ascending node [deg] (default=0 dag).
             k : RV semi-amplitude [m/s]
             mass : planetary mass [M_Earth]
         """
-        if np.isnan(elower) == False:
-            print('\n [INFO] Orbital eccentricity: the lower limit is adopted as the nominal value (%.3f)'%(elower))
+        error = int(0)
+        
+        if p!=p:
+            print('\n [ERROR] Orbital period required! Provide p [days].')
+            error+=1
+            
+        if k!=k:
+            print('\n [ERROR] RV semi-amplitude required! Provide k [m/s].')
+            error+=1
+            
+        if e!=e and elower!=elower:
+            print('\n [ERROR] Orbital eccentricity required! Provide either e or elower.')
+            error+=1
+            
+        if mean_long!=mean_long and mean_anomaly!=mean_anomaly and peri_time!=peri_time:
+            print('\n [ERROR] Orbital phase required! Provide either mean_long [deg], mean_anomaly [deg], or peri_time.')
+            error+=1
+            
+        if elower==elower:
             e = elower
-
-        if (semi_major!=semi_major)|(mass!=mass):
-            mass_comp,semi_major_comp = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
-        
-        if mass!=mass:
-            mass = mass_comp
-            print('\n [INFO] Mass calculated to be %.2f Earth mass'%(mass))
-        
-        if semi_major!=semi_major:
-            semi_major = semi_major_comp
-            print('\n [INFO] Semi-major axis calculated to be %.2f AU'%(semi_major))
-
-        self.planets.append([p, semi_major, mean_long, mean_anomaly, peri_time, e, omega, inc, asc_node, k, mass])
-        self.ARDENT_ShowPlanets()
+        if e > 0 and omega!=omega:
+            print('\n [ERROR] Argument of periastron required if e>0! Provide omega [deg].')
+            error += 1
+            
+        if error == 0:
+            if elower==elower:
+                print('\n [INFO] Orbital eccentricity: the lower limit is adopted as the nominal value (%.3f)'%(elower))
+            if e==0 and omega!=omega:
+                print('\n [INFO] Argument of periastron of circular orbit not provided. Arbitrarily set to 90 deg.')
+                omega=90.
+                                
+            if (semi_major!=semi_major)|(mass!=mass):
+                mass_comp,semi_major_comp = ardf.AmpStar(self.mstar, p, k, e=e, i=inc)
+                if mass!=mass:
+                    mass = mass_comp
+                    print('\n [INFO] Mass calculated to be %.2f Earth mass'%(mass))
+            
+                if semi_major!=semi_major:
+                    semi_major = semi_major_comp
+                    print('\n [INFO] Semi-major axis calculated to be %.2f AU'%(semi_major))
+                    
+            self.planets.append([p, semi_major, mean_long, mean_anomaly, peri_time, e, omega, inc, asc_node, k, mass])
+            self.ARDENT_ShowPlanets()
 
 
     def ARDENT_ShowPlanets(self):
@@ -615,19 +641,21 @@ class ARDENT_tableXY(object):
                 subP_means, M95 = ardf.Stat_DataDL(self.output_file_DL, nbins=nbins, percentage=95)
                 output = pd.read_pickle(self.output_file_DL)
                 rangeP = output['rangeP']
+                InjectionRecoveryFile = self.output_file_DL
+                split_filename = InjectionRecoveryFile.split('_')[-1]
+                version_dataDL = int(split_filename.split('.')[0])
             else: # ARDENT recomputes data-driven detection limits (with nbins bins) prior to computing the dynamical detection limits. It is possible to skip the ARDENT computation of data DL, in which case ExternalDataDL must be provided.
                 subP_means, M95 = ExternalDataDL[0], ExternalDataDL[1]
                 rangeP = np.array([subP_means[0], subP_means[-1]])
-                
-            InjectionRecoveryFile = self.output_file_DL
-                
+                version_dataDL = int(0)
+                                
         else:
             subP_means, M95 = ardf.Stat_DataDL(InjectionRecoveryFile, nbins=nbins, percentage=95)
             output = pd.read_pickle(InjectionRecoveryFile)
             rangeP = output['rangeP']
+            split_filename = InjectionRecoveryFile.split('_')[-1]
+            version_dataDL = int(split_filename.split('.')[0])
             
-        split_filename = InjectionRecoveryFile.split('_')[-1]
-        version_dataDL = int(split_filename.split('.')[0])
         version_dynDL = int(0)
         self.output_file_STDL1 = self.tag+"AllStabilityRates_%d_Run%d.dat"%(version_dataDL,version_dynDL)
         output_file = self.output_file_STDL1
