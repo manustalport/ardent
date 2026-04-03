@@ -448,24 +448,11 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
     sim = rebound.Simulation()
     sim.add(m=Mstar)
 
-    for q in range(Nbodies):
-        ### Mean longitude
-        if phase_param[q] == 'mean_long' and q == 0:
-            sim.add(m=M[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        elif phase_param[q] == 'mean_long' and q > 0:
-            sim.add(primary=sim.particles[0], m=M[q], a=a[q], l=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-        ### Time of pericenter
-        elif phase_param[q] == 'pericenter_time' and q == 0:
-            sim.add(m=M[0], a=a[0], T=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        elif phase_param[q] == 'pericenter_time' and q > 0:
-            sim.add(primary=sim.particles[0], m=M[q], a=a[q], T=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-        ### Mean anomaly
-        elif phase_param[q] == 'mean_anomaly' and q == 0:
-            sim.add(m=M[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        elif phase_param[q] == 'mean_anomaly' and q > 0:
-            sim.add(primary=sim.particles[0], m=M[q], a=a[q], M=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-
-
+    phase_arg = lambda q : {'l':phase[q]} if phase_param[q] == 'mean_long' else ({'T':phase[q]} if phase_param[q] == 'pericenter_time' else {'M':phase[q]})
+    sim.add(m=M[0], a=a[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0],**phase_arg(0))
+        
+    for q in range(1,Nbodies):
+        sim.add(primary=sim.particles[0], m=M[q], a=a[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q],**phase_arg(q))
       
     sim.move_to_com()
     sim.dt = dt * 2*np.pi # Conversion to rebound units: 1yr = 2pi
