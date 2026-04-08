@@ -15,7 +15,13 @@ from scipy.optimize import curve_fit
 from scipy.special import erf
 from tqdm import tqdm
 import warnings
-warnings.simplefilter("ignore", np.ComplexWarning)
+
+try:
+    from numpy import ComplexWarning
+except ImportError:
+    from numpy.exceptions import ComplexWarning
+warnings.simplefilter("ignore", ComplexWarning)
+
 
 # ---------- Define constants
 Gconst = 6.6743*10**(-11) # The universal gravitation constant, in units of m^3/(kg*s^2)  ;  Value from CODATA 2018
