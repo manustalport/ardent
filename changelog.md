@@ -2,7 +2,8 @@
 
 ### Version 1.2.2
 * Bug fix in `ARDENT_AddPlanets` function of ardent.py: The code does not assume anymore any value for the non-provided orbital parameters. If a parameter is necessary but not given by the user, the code returns a targeted error message instead.
-* Update: the user can now use a different definition of phase angle per planet (mean_long, mean_anomaly, or pericenter_time). 
+* Update: the user can now use a different definition of phase angle per planet (mean_long, mean_anomaly, or pericenter_time).
+* Update call to ComplexWarning
 
 ### Version 1.2.1
 * Solved issues with plots of detection limits in the orbital plane (`ARDENT_FinalPlot` function): resolution preserved in zoomed-in plots, no truncation of mass limits, X and Y axes have identical ranges, adjusted the interpolation method, parameter `nbins` added to the function to enable modifying the number of period bins of the 'RV only' plot. 
