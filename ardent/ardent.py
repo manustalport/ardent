@@ -1,4 +1,4 @@
-__version__ = '1.2.2'
+__version__ = '1.2.3'
 
 import getopt
 import os
@@ -839,9 +839,9 @@ class ARDENT_tableXY(object):
 
         
         
-    def ARDENT_TestStability(self, P_inject, m_inject, ML_inject=0., MA_inject=None, peritime_inject=None, e_inject=0., w_inject=0., inc_inject=90., ascnode_inject=0., param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
+    def ARDENT_TestStability_Nplus1(self, P_inject, m_inject, ML_inject=np.nan, MA_inject=0., peritime_inject=np.nan, e_inject=0., w_inject=90., inc_inject=90., ascnode_inject=0., param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
         """
-        Test the orbital stability of a unique solution. Typically, this function is used to test the stability of a planet candidate with specific orbital parameters.
+        Test the orbital stability of a unique solution including all known planets plus an additional body. Typically, this function is used to test the stability of a planet candidate with specific orbital parameters. The stability is tested via brute-force long-term integration employing the WHFast integrator implemented in REBOUND (https://rebound.hanno-rein.de/).
         
         Arguments
         ---------
@@ -852,7 +852,7 @@ class ARDENT_tableXY(object):
         integration_time (float, optional): total integration time [years] (default=1e6 x Pouter)
         dt (float, optional): integration timestep [years] (default=Pinner / 100)
         min_dist (float, optional): minimal approach (close encounter) threshold [Hill radius] (default=3)
-        max_dist (float, optional): maximal distance (escape) threshold [AU] (default=5)
+        max_dist (float, optional): maximal distance (escape) threshold, expressed as a multiplicative factor of a_outer [AU] (default=5)
         Noutputs (int, optional): number of output timesteps saved in a file (default=1000)
         GR (bool, optional): include the general relativity module if True (default=False)
         relaunch (bool, optional): Set to True to overwrite any old run with identical settings, False otherwise.
@@ -953,4 +953,40 @@ class ARDENT_tableXY(object):
         plt.tight_layout()
         plt.subplots_adjust(wspace=0.25)
         plt.savefig(self.tag+'LongTermEvolution.png', format='png', dpi = 300)
+
+
+
+    def ARDENT_TestStability(self, param_file=None, integration_time=None, dt=None, min_dist=3, max_dist=5, Noutputs=1000, GR=False, relaunch=False):
+        """
+        Test the orbital stability of the initial system, consisting of all known planets. Typically, this function is used to validate the stability of the nominal system prior to computing the dynamical detection limits. The stability is tested via brute-force long-term integration employing the WHFast integrator implemented in REBOUND (https://rebound.hanno-rein.de/).
+        
+        Arguments
+        ---------
+        param_file (string, optional): name of the input initial conditions file (default=None). If this file is used, there is no need to specify the same parameters as arguments below.
+        integration_time (float, optional): total integration time [years] (default=1e6 x Pouter)
+        dt (float, optional): integration timestep [years] (default=Pinner / 100)
+        min_dist (float, optional): minimal approach (close encounter) threshold [Hill radius] (default=3)
+        max_dist (float, optional): maximal distance (escape) threshold, expressed as a multiplicative factor of a_outer [AU] (default=5)
+        Noutputs (int, optional): number of output timesteps saved in a file (default=1000)
+        GR (bool, optional): include the general relativity module if True (default=False)
+        relaunch (bool, optional): Set to True to overwrite any old run with identical settings, False otherwise.
+        """
+    
+        mstar = self.mstar
+        table_keplerian = self.planets_table.copy()
+        table_keplerian = table_keplerian.sort_values(by='semimajor')
+        
+        output_file = self.tag + 'TestStability_NominalSystem.dat'
+        self.output_evolution = output_file
+        
+        if os.path.exists(output_file):
+            if relaunch:
+                print(' [INFO] An old processing has been found. Overwriting the output file (relaunch=True). ')
+                ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
+                        
+            else:
+                print(' [INFO] An old processing has been found, and relaunch=False. First rename or delete the output file below prior to launch a new simulation: \n\n ' + self.output_evolution)
+                
+        else:
+            ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
 
