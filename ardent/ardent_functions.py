@@ -456,7 +456,6 @@ def Stability(KepParam, phase_param, Mstar, T, dt, min_dist, max_dist, max_drift
 
     phase_arg = lambda q : {'l':phase[q]} if phase_param[q] == 'mean_long' else ({'T':phase[q]} if phase_param[q] == 'pericenter_time' else {'M':phase[q]})
     sim.add(m=M[0], a=a[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0],**phase_arg(0))
-        
     for q in range(1,Nbodies):
         sim.add(primary=sim.particles[0], m=M[q], a=a[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q],**phase_arg(q))
       
@@ -609,7 +608,7 @@ def DynDL(shift, output_file1, output_file2, keplerian_table, D95, nbins, inc_in
     
     if type(ecc_inject) == float or type(ecc_inject) == int:
         ecc_inject = np.zeros(Nphases) + ecc_inject
-        w_inject = np.zeros(Nphases) + np.pi/4 # Default is 90deg (in rad for REBOUND)
+        w_inject = np.zeros(Nphases) + np.pi/2 # Default is 90deg (in rad for REBOUND)
     elif ecc_inject == 'beta':
         ecc_inject = np.random.beta(0.867,3.03,size=Nphases)
         w_inject = np.array([uniform(-np.pi, np.pi) for i in range(Nphases)])
@@ -782,6 +781,7 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
     """
 
     table_keplerian = keplerian_table.copy()
+    Nbodies = len(table_keplerian) # The number of planets (known + INJECTED one)
 
     if dt is None:
         dt = np.min(table_keplerian['period'])/(365.25*100) # By default, Pb/100 in [yr] (smaller dt than in DynDL, because here WHFast integrator will be used)
@@ -792,46 +792,33 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
     w = ang_rad(np.array(table_keplerian['periastron']))
     inc = ang_rad(np.array(table_keplerian['inc']))
     O = ang_rad(np.array(table_keplerian['asc_node']))
-    m = np.array(table_keplerian['mass']) *mE_S                # [MSun]
+    M = np.array(table_keplerian['mass']) *mE_S                # [MSun]
     a = np.array(table_keplerian['semimajor'])                 # [AU]
-    
+     
     mean_long = np.array(table_keplerian['mean_long'])
     mean_anomaly = np.array(table_keplerian['mean_anomaly'])
     peri_time = np.array(table_keplerian['pericenter_time'])
-    if np.sum(np.isnan(mean_long)) == 0:
-        phase = ang_rad(mean_long)
-        phase_param = 'mean_long'
-    elif np.sum(np.isnan(peri_time)) == 0:
-        phase = ang_rad(peri_time)
-        phase_param = 'pericenter_time'
-    else:
-        phase = ang_rad(mean_anomaly)
-        phase_param = 'mean_anomaly'
-    
+    phase = np.zeros(Nbodies) # Planets + the injected one
+    phase_param = []
+    for i in range(Nbodies):
+        if np.isnan(mean_long[i]) == False:
+            phase[i] = ang_rad(mean_long[i]) # Angle units in REBOUND are radians.
+            phase_param = np.append(phase_param, 'mean_long')
+        elif np.isnan(peri_time[i]) == False:
+            phase[i] = (peri_time[i]/365.25) * 2*np.pi # Time units in REBOUND are 2pi/yr.
+            phase_param = np.append(phase_param, 'pericenter_time')
+        else:
+            phase[i] = ang_rad(mean_anomaly[i]) # Angle units in REBOUND are radians.
+            phase_param = np.append(phase_param, 'mean_anomaly')
+            
     print(' [INFO] --Long term stability-- Start of the numerical integration ')
     sim = rebound.Simulation()
     sim.add(m=Mstar)
-    
-    if phase_param == 'mean_long': # Mean Longitude is provided
-        sim.add(m=m[0], a=a[0], l=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
-            sim.add(primary=sim.particles[0], m=m[q], a=a[q], l=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-            q += 1
-            
-    elif phase_param == 'pericenter_time': # Time of pericenter passage is provided
-        sim.add(m=m[0], a=a[0], T=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
-            sim.add(primary=sim.particles[0], m=m[q], a=a[q], T=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-            q += 1
-            
-    else: # Mean Anomaly is provided
-        sim.add(m=m[0], a=a[0], M=phase[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0])
-        q = int(1)
-        while q < len(a):
-            sim.add(primary=sim.particles[0], m=m[q], a=a[q], M=phase[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q])
-            q += 1
+
+    phase_arg = lambda q : {'l':phase[q]} if phase_param[q] == 'mean_long' else ({'T':phase[q]} if phase_param[q] == 'pericenter_time' else {'M':phase[q]})
+    sim.add(m=M[0], a=a[0], omega=w[0], e=e[0], Omega=O[0], inc=inc[0],**phase_arg(0))
+    for q in range(1,Nbodies):
+        sim.add(primary=sim.particles[0], m=M[q], a=a[q], omega=w[q], e=e[q], Omega=O[q], inc=inc[q],**phase_arg(q))
 
     sim.move_to_com()
     sim.dt = dt * 2*np.pi # Conversion to rebound units: 1yr = 2pi
@@ -839,7 +826,7 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
     sim.ri_whfast.corrector = 17
     sim.ri_whfast.safe_mode = 0
     sim.exit_max_distance = max_dist * a[-1]
-    sim.exit_min_distance = min_dist * HillRad(a[0], m[0], Mstar)
+    sim.exit_min_distance = min_dist * HillRad(a[0], M[0], Mstar)
 
     if GR == True:
         ##*************** REBOUNDX PART *****************
@@ -864,13 +851,11 @@ def LongTermStab(output_file, keplerian_table, Mstar, T=None, dt=None, min_dist=
             file.write('\n')
                 
         file.close()
-        print(' [INFO] --Long term stability-- Processing finished! The system survived the integration. ')
+        print(' [INFO] --Long term stability-- Simulation finished! The system survived the integration. ')
         
     except rebound.Escape:
         print(' [INFO] --Long term stability-- Simulation stopped! Escape of one particle. ')
         
     except rebound.Encounter:
         print(' [INFO] --Long term stability-- Simulation stopped! Close encounter. ')
-
-
 
