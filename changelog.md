@@ -1,5 +1,9 @@
 # Changelog
 
+### Version 1.2.3
+* New feature: ARDENT_TestStability test the orbital stability of the nominal system (known planets only). It performs a long-term numerical integration of the planetary orbits and checks if the system survives the simulation.
+* Function renaming: the old ARDENT_TestStability is now renamed as ARDENT_TestStability_Nplus1. This function tests the stability of the system when including an additional injected planet. This function is now also corrected from the bug reported in Version 1.2.2. 
+
 ### Version 1.2.2
 * Bug fix in `ARDENT_AddPlanets` function of ardent.py: The code does not assume anymore any value for the non-provided orbital parameters. If a parameter is necessary but not given by the user, the code returns a targeted error message instead.
 * Update: the user can now use a different definition of phase angle per planet (mean_long, mean_anomaly, or pericenter_time).
