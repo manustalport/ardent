@@ -1,5 +1,9 @@
 # Changelog
 
+### Version 1.2.4
+* Updated plot styles
+* Updated tutorial
+
 ### Version 1.2.3
 * New feature: ARDENT_TestStability tests the orbital stability of the nominal system (composed of the known planets only). It performs a long-term numerical integration of the planetary orbits and checks if the system survives the simulation.
 * Function renaming: the old ARDENT_TestStability is now renamed as ARDENT_TestStability_Nplus1. This function tests the stability of the system when including an additional injected planet. This function is now also corrected from the bug reported in Version 1.2.2.
