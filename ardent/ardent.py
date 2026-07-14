@@ -1,4 +1,4 @@
-__version__ = '1.2.3'
+__version__ = '1.2.4'
 
 import getopt
 import os
@@ -15,6 +15,9 @@ from joblib import Parallel, delayed
 from matplotlib import pyplot as plt
 from matplotlib.cm import ScalarMappable
 from scipy.interpolate import interp1d
+
+import matplotlib as mpl
+mpl.rcParams["font.family"] = "serif"
 
     
 # ---------- Define constants
@@ -65,7 +68,7 @@ class ARDENT_tableXY(object):
         """
         if new:
             fig = plt.figure(figsize=(11,3.5))
-        plt.rc('font', size=12)
+        plt.rc('font', size=11)
         
         ##### RV residuals timeseries plot
         plt.subplot(1,2,1)
@@ -239,7 +242,7 @@ class ARDENT_tableXY(object):
         if new:
             plt.figure(figsize=(5,5))
         plt.axis('equal')
-        plt.rc('font', size=12)
+        plt.rc('font', size=11)
 
         plt.scatter([0],[0],color='k',marker='x',label=r'%.2f $M_{\odot}$'%(self.mstar))
         for xi,yi,wi,mi in zip(x,y,np.array(table['periastron']),np.array(table['mass'])):
@@ -335,7 +338,7 @@ class ARDENT_tableXY(object):
         M = interp1d(a, statistic[1], kind=interp, bounds_error=False, fill_value=np.nan)(R)
         M = np.reshape(M,(1000,1000))
 
-        plt.rc('font', size=12)
+        plt.rc('font', size=11)
         plt.pcolormesh(Gx,Gy,M,vmin=0,vmax=round(Mmax),cmap='gnuplot')
         plt.xlim(-x_au,x_au)
         plt.ylim(-x_au,x_au)
@@ -360,7 +363,7 @@ class ARDENT_tableXY(object):
         
         fig = plt.figure(figsize=(14,6))
         #plt.title(self.starname)
-        plt.rc('font', size=12)
+        plt.rc('font', size=11)
         
         plt.subplot(1,2,1)
         self.ARDENT_PlotPlanets(new=False,savefig=False) ; ax = plt.gca() ; xlim = ax.get_xlim()[1]
@@ -571,8 +574,8 @@ class ARDENT_tableXY(object):
             planets2 = planets2.loc[(planets2[keyword_x]>np.min(xvar))&(planets2[keyword_x]<np.max(xvar))]
             variable = np.array(planets2[keyword_y])
             variable[variable>1.05*np.max(yvar)] = np.max(yvar)
-            plt.scatter(planets2[keyword_x],variable,color='k',marker='^',s=45,zorder=9)
-            plt.scatter(planets2[keyword_x],planets2[keyword_y],color='k',marker='D',s=65,zorder=10)
+            plt.scatter(planets2[keyword_x],variable,color='k',marker='^',s=130,edgecolors='palegreen',zorder=9)
+            plt.scatter(planets2[keyword_x],planets2[keyword_y],color='k',marker='s',s=100,edgecolors='palegreen',zorder=10)
 
         plt.scatter(xvar, yvar, c=detect_rate, s=10.0, alpha=0.4, edgecolors='black', linewidths=0.2, cmap=cmap, vmin=0, vmax=100)
 
@@ -597,10 +600,10 @@ class ARDENT_tableXY(object):
         plt.ylim(0, 1.05*max(yvar))
         cb = plt.colorbar(pad=0., ticks=[0.,25., 50., 75., 100.])
         cb.set_label(label=r'Detection rate [%]', size='large')
-        plt.rc('font', size=12)
+        plt.rc('font', size=11)
         plt.xlabel(xlabel, size='large')
         plt.ylabel(ylabel, size='large')
-        plt.tick_params(labelsize=12)
+        plt.tick_params(labelsize=11)
         plt.tight_layout()
         
         fig_title = output_file.replace('.p', '_'+axis_y_var+'vs'+axis_x_var+'.png')
@@ -808,13 +811,13 @@ class ARDENT_tableXY(object):
         planets = planets.loc[(planets[keyword_x]>np.min(P))&(planets[keyword_x]<np.max(P))]
         variable = np.array(planets['mass']) * unit
         variable[variable>1.05*np.max(M_dataDL)] = np.max(M_dataDL)
-        plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=45,zorder=20)
-        plt.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='D',s=65,zorder=22)
+        plt.scatter(planets[keyword_x],variable,color='k',marker='^',s=130,edgecolors='palegreen',zorder=20)
+        plt.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='s',s=100,edgecolors='palegreen',zorder=22)
 
-        plt.rc('font', size=12)
-        plt.xlabel(xlabel, size='x-large')
-        plt.ylabel(ylabel, size='x-large')
-        plt.tick_params(labelsize=12)
+        plt.rc('font', size=11)
+        plt.xlabel(xlabel, size='large')
+        plt.ylabel(ylabel, size='large')
+        plt.tick_params(labelsize=11)
         plt.legend(loc='upper left')
         plt.tight_layout()
         plt.ylim(0,np.max(M_dataDL)+np.max(M_dataDL)/20)
@@ -833,7 +836,7 @@ class ARDENT_tableXY(object):
                 ax1.plot(P_dataDL, M_dataDL, ls='-', color='xkcd:mahogany', alpha=0.7, lw=1.5, marker='o', ms=8.5, zorder=2)
                 ax1.plot(P, M_stb, ls='-', color='xkcd:fire engine red', lw=1, marker='o', ms=6, mfc='yellow', mew=1, zorder=10)
                 ax1.fill_between(x= P, y1= M_stb, facecolor= "xkcd:fire engine red", lw=0., alpha=0.1)
-                ax1.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='D',s=65,zorder=22)
+                ax1.scatter(planets[keyword_x],planets['mass']*unit,color='k',marker='s',s=100,edgecolors='palegreen',zorder=22)
         
         plt.savefig(self.tag+'FinalDetectionLimits.png', format='png', dpi = 300)
 
@@ -989,4 +992,5 @@ class ARDENT_tableXY(object):
                 
         else:
             ardf.LongTermStab(output_file, table_keplerian, mstar, integration_time, dt, min_dist, max_dist, Noutputs, GR)
+
 
